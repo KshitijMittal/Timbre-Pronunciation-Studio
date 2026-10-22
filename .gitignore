@@ -1,0 +1,27 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.env
+.streamlit/secrets.toml
+data/
+node_modules/
+dist/
+*.log
+.DS_Store
+Thumbs.db
+
+# AI/editor-local tool state — not part of the project
+.cursor/
+.freebuff/
+.kilo/
+.idea/
+.vscode/
+
+# Per-tool instruction stubs. `AGENTS.md` is the single binding file and IS
+# committed; these only point at it, so a clone does not need them.
+CLAUDE.md
+GEMINI.md
+
+# Superseded planning dossier. `docs/` is the source of truth and IS committed.
+Gnani_AI_Project_Handoff_Master_Prompt.md

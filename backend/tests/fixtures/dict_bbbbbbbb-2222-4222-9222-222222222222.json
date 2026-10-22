@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "id": "dict_bbbbbbbb-2222-4222-9222-222222222222",
+  "name": "Gnani Demo",
+  "created_at": "2026-10-20T11:12:04Z",
+  "updated_at": "2026-10-20T11:31:47Z",
+  "rules": [
+    {
+      "id": "rule_8b1d4c02-9e3f-4a55-b7c1-0d2e6f8a1b34",
+      "source": "Timbre",
+      "replacement": "Tamber",
+      "type": "alias",
+      "created_at": "2026-10-20T11:12:04Z",
+      "updated_at": "2026-10-20T11:12:04Z"
+    },
+    {
+      "id": "rule_2c7f9a11-4d8b-4e06-8a3d-5b1c9e0f7d22",
+      "source": "Bengaluru",
+      "replacement": "Bengalooru",
+      "type": "alias",
+      "created_at": "2026-10-20T11:14:22Z",
+      "updated_at": "2026-10-20T11:14:22Z"
+    },
+    {
+      "id": "rule_5a0c3e77-1b2d-4c88-9f10-7d6e5f4a3b21",
+      "source": "Gnani AI",
+      "replacement": "Gyaanee A I",
+      "type": "alias",
+      "created_at": "2026-10-20T11:20:00Z",
+      "updated_at": "2026-10-20T11:20:00Z"
+    }
+  ]
+}

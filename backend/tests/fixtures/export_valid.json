@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "exported_at": "2026-11-02T09:15:00Z",
+  "exported_by": "timbre-pronunciation-studio/1.0",
+  "dictionary": {
+    "schema_version": 1,
+    "id": "dict_bbbbbbbb-2222-4222-9222-222222222222",
+    "name": "Gnani Demo",
+    "created_at": "2026-10-20T11:12:04Z",
+    "updated_at": "2026-10-20T11:31:47Z",
+    "rules": [
+      {
+        "id": "rule_8b1d4c02-9e3f-4a55-b7c1-0d2e6f8a1b34",
+        "source": "Timbre",
+        "replacement": "Tamber",
+        "type": "alias",
+        "created_at": "2026-10-20T11:12:04Z",
+        "updated_at": "2026-10-20T11:12:04Z"
+      }
+    ]
+  },
+  "baseline": {
+    "model": "timbre-v3.0",
+    "voice": "Lakshmi",
+    "language": "en-IN",
+    "speed": 1.0,
+    "audio_config": {
+      "sample_rate": 48000,
+      "num_channels": 1,
+      "sample_width": 2,
+      "encoding": "linear_pcm",
+      "container": "wav"
+    }
+  }
+}

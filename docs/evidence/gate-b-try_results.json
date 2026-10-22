@@ -1,0 +1,293 @@
+{
+  "terms": {
+    "Zentara": {
+      "term": "Zentara",
+      "category": "Invented brand",
+      "sentence": "We shipped Zentara to every customer on the same day.",
+      "suggested": "Zen Taara",
+      "original": {
+        "key": "169b5b440945c0922b5b63f6ccfc192d3d2c69220fc9fcdb099b28f62d54503d",
+        "file": "try/01_zentara_original.wav",
+        "status": 200,
+        "bytes": 345644,
+        "elapsed_ms": 985,
+        "error": "",
+        "reused": true
+      },
+      "attempts": [
+        {
+          "respelling": "Zan Taara",
+          "transformed_text": "We shipped Zan Taara to every customer on the same day.",
+          "verdict": "pending",
+          "notes": "",
+          "key": "abd1a7b1ebe8019e1e696a0beac1105a9510dabad838f7a8ef5978bff49a793a",
+          "file": "try/01_zentara_zan-taara_adjusted.wav",
+          "status": 200,
+          "bytes": 353324,
+          "elapsed_ms": 1125,
+          "error": "",
+          "reused": true
+        },
+        {
+          "respelling": "Zen Taara",
+          "transformed_text": "We shipped Zen Taara to every customer on the same day.",
+          "verdict": "closer",
+          "notes": "",
+          "key": "6ba5422e0157197527def7933231f7615e23e23ccda2a54369daf5b6a78cc0cc",
+          "file": "try/01_zentara_zen-taara_adjusted.wav",
+          "status": 200,
+          "bytes": 337964,
+          "elapsed_ms": 1000,
+          "error": "",
+          "reused": true
+        }
+      ],
+      "verdict": "closer",
+      "notes": ""
+    },
+    "Timbre": {
+      "term": "Timbre",
+      "category": "Product name",
+      "sentence": "Timbre speaks Indian languages clearly and naturally.",
+      "suggested": "Tim-ber",
+      "original": {
+        "key": "bf50a041ec7f1671637fc6e4cfe6c78394476f0695a8cfd53ebfac5e6444cddf",
+        "file": "try/02_timbre_original.wav",
+        "status": 200,
+        "bytes": 368684,
+        "elapsed_ms": 867,
+        "error": "",
+        "reused": true
+      },
+      "attempts": [
+        {
+          "respelling": "Tim-ber",
+          "transformed_text": "Tim-ber speaks Indian languages clearly and naturally.",
+          "verdict": "closer",
+          "notes": "",
+          "key": "69af46467e3c5d83e5831d46663173f76c6cb4975f478f9978c4b5d69bf0c3ed",
+          "file": "try/02_timbre_tim-ber_adjusted.wav",
+          "status": 200,
+          "bytes": 353324,
+          "elapsed_ms": 1241,
+          "error": "",
+          "reused": true
+        }
+      ],
+      "verdict": "closer",
+      "notes": ""
+    },
+    "Gnani": {
+      "term": "Gnani",
+      "category": "Product name",
+      "sentence": "Gnani builds speech systems for the Indian market.",
+      "suggested": "Gyaa-nee",
+      "original": {
+        "key": "e9e4c97dfc85764ab44b885f4851f51d623db4f690b2d4155b3cc64bec92353e",
+        "file": "try/03_gnani_original.wav",
+        "status": 200,
+        "bytes": 291884,
+        "elapsed_ms": 813,
+        "error": "",
+        "reused": true
+      },
+      "attempts": [
+        {
+          "respelling": "Gyaa-nee",
+          "transformed_text": "Gyaa-nee builds speech systems for the Indian market.",
+          "verdict": "closer",
+          "notes": "",
+          "key": "cdc352561e7588ed8794484404753823a0dee9e97fd44021ba9078c32d23bc4a",
+          "file": "try/03_gnani_gyaa-nee_adjusted.wav",
+          "status": 200,
+          "bytes": 284204,
+          "elapsed_ms": 995,
+          "error": "",
+          "reused": true
+        }
+      ],
+      "verdict": "closer",
+      "notes": ""
+    },
+    "Shreyas": {
+      "term": "Shreyas",
+      "category": "Indian personal name",
+      "sentence": "Shreyas joined the platform team last month.",
+      "suggested": "Shrey-as",
+      "original": {
+        "key": "be99dddb68f74251255ff2b825b49dd921483534c8bfdcfd4a34173accf7337f",
+        "file": "try/04_shreyas_original.wav",
+        "status": 200,
+        "bytes": 253484,
+        "elapsed_ms": null,
+        "error": "",
+        "reused_from": "poc_04_shreyas_original.wav",
+        "reused": true
+      },
+      "attempts": [
+        {
+          "respelling": "Shrey-as",
+          "transformed_text": "Shrey-as joined the platform team last month.",
+          "verdict": "pending",
+          "notes": "",
+          "key": "ec83b5ddb402896e2313610ff8420805b7d71eea6c2386edde25531f7f7318b1",
+          "file": "try/04_shreyas_shrey-as_adjusted.wav",
+          "status": 200,
+          "bytes": 261164,
+          "elapsed_ms": 700,
+          "error": ""
+        },
+        {
+          "respelling": "Shrey-ass",
+          "transformed_text": "Shrey-ass joined the platform team last month.",
+          "verdict": "closer",
+          "notes": "listener answered \"yes\"",
+          "key": "bacf48a21e3f4f4e69badf76f7d197937c27fc44585aa525ccb9e3284dc30215",
+          "file": "try/04_shreyas_shrey-ass_adjusted.wav",
+          "status": 200,
+          "bytes": 253484,
+          "elapsed_ms": 1160,
+          "error": ""
+        }
+      ],
+      "verdict": "closer",
+      "notes": "listener answered \"yes\""
+    },
+    "Iyer": {
+      "term": "Iyer",
+      "category": "Indian personal name",
+      "sentence": "Iyer led the design review for the new console.",
+      "suggested": "I-yer",
+      "original": {
+        "key": "10f0c4e8d66d6b0473ce5624ef1fdd5cf579c09d56eda115d012bcc6aaa774f8",
+        "file": "try/05_iyer_original.wav",
+        "status": 200,
+        "bytes": 261164,
+        "elapsed_ms": 1056,
+        "error": "",
+        "reused": true
+      },
+      "attempts": [
+        {
+          "respelling": "I-yer",
+          "transformed_text": "I-yer led the design review for the new console.",
+          "verdict": "closer",
+          "notes": "",
+          "key": "5ac71851fdc17ac358f043732084b0d7053dd2d9a41005e69d72b59dcb88bf56",
+          "file": "try/05_iyer_i-yer_adjusted.wav",
+          "status": 200,
+          "bytes": 261164,
+          "elapsed_ms": 697,
+          "error": "",
+          "reused": true
+        }
+      ],
+      "verdict": "closer",
+      "notes": ""
+    },
+    "Coimbatore": {
+      "term": "Coimbatore",
+      "category": "Place name",
+      "sentence": "The Coimbatore campus opens next quarter.",
+      "suggested": "Koyamba-tore",
+      "original": {
+        "key": "ad89b4733bf1820252f0f5c2840805d2b66e7a6e440832459ad60c6201e41b59",
+        "file": "try/06_coimbatore_original.wav",
+        "status": 200,
+        "bytes": 253484,
+        "elapsed_ms": 636,
+        "error": "",
+        "reused": true
+      },
+      "attempts": [
+        {
+          "respelling": "Koyamba-tore",
+          "transformed_text": "The Koyamba-tore campus opens next quarter.",
+          "verdict": "closer",
+          "notes": "partial - listener answered \"partly\"",
+          "key": "bdaf6560915b22e2a590506259a1efd38d55d5e6c3fe277bd718aa39b7b6f78c",
+          "file": "try/06_coimbatore_koyamba-tore_adjusted.wav",
+          "status": 200,
+          "bytes": 268844,
+          "elapsed_ms": 924,
+          "error": "",
+          "reused": true
+        }
+      ],
+      "verdict": "closer",
+      "notes": "partial - listener answered \"partly\""
+    },
+    "SEBI": {
+      "term": "SEBI",
+      "category": "Acronym read as a word",
+      "sentence": "SEBI published the circular on Friday evening.",
+      "suggested": "Say-bee",
+      "original": {
+        "key": "1a6495c84845544937eadfdae8e48d6c6296b6c7257ca4f0395eee7489c98115",
+        "file": "try/07_sebi_original.wav",
+        "status": 200,
+        "bytes": 284204,
+        "elapsed_ms": 1370,
+        "error": "",
+        "reused": true
+      },
+      "attempts": [
+        {
+          "respelling": "Say-bee",
+          "transformed_text": "Say-bee published the circular on Friday evening.",
+          "verdict": "closer",
+          "notes": "",
+          "key": "28d8bf90b90eeabf72dce80aebfb1d600e996901760e6f25e0f9fa3a8f796a1d",
+          "file": "try/07_sebi_say-bee_adjusted.wav",
+          "status": 200,
+          "bytes": 291884,
+          "elapsed_ms": 1205,
+          "error": "",
+          "reused": true
+        }
+      ],
+      "verdict": "closer",
+      "notes": ""
+    },
+    "Kubernetes": {
+      "term": "Kubernetes",
+      "category": "Technical term",
+      "sentence": "The cluster runs on Kubernetes with autoscaling enabled.",
+      "suggested": "Koo-ber-NET-eez",
+      "original": {
+        "key": "8524bb41a959ba3a286d7187346103c8c420a4dce2e6468a82297213b50866ef",
+        "file": "try/08_kubernetes_original.wav",
+        "status": 200,
+        "bytes": 353324,
+        "elapsed_ms": null,
+        "error": "",
+        "reused_from": "poc_07_kubernetes_original.wav",
+        "reused": true
+      },
+      "attempts": [
+        {
+          "respelling": "Koo-ber-NET-eez",
+          "transformed_text": "The cluster runs on Koo-ber-NET-eez with autoscaling enabled.",
+          "verdict": "closer",
+          "notes": "listener answered \"yes\"",
+          "key": "5540d8dca5f9f4850dabca801795933320fad61228945b0405bd9ed356157c54",
+          "file": "try/08_kubernetes_koo-ber-net-eez_adjusted.wav",
+          "status": 200,
+          "bytes": 407084,
+          "elapsed_ms": 981,
+          "error": "",
+          "reused": true
+        }
+      ],
+      "verdict": "closer",
+      "notes": "listener answered \"yes\""
+    }
+  },
+  "settings": {
+    "model": "timbre-v3.0",
+    "voice": "Lakshmi",
+    "language": "en-IN",
+    "speed": 1.0
+  },
+  "updated_at": "2026-10-21T05:00:30Z"
+}

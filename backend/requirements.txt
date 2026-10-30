@@ -1,7 +1,14 @@
-fastapi==0.115.6
+# fastapi 0.115.x pins starlette <0.42, but streamlit's server imports
+# starlette.middleware.gzip.DEFAULT_EXCLUDED_CONTENT_TYPES, which only exists
+# from starlette 0.47. The pair below is the smallest combination that satisfies
+# both; verified against the full test suite (see README §Tests).
+fastapi==0.116.2
+starlette==0.47.3
 uvicorn[standard]==0.34.0
 requests==2.32.3
 python-dotenv==1.0.1
 
 pytest==8.3.4
 httpx==0.28.1
+
+streamlit>=1.40

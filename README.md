@@ -21,12 +21,15 @@ audio with identical model, voice, language and speed settings.
 | `scripts/smoke_test.py` (Gate A) | **Passed 20 Oct 2026** — both models returned audio |
 | Gate B pronunciation POC | **Passed 21 Oct 2026** — 8 of 8 terms judged closer, 0 damaged, settings held constant; one listener, 8 English terms |
 | Measured limits (22 Oct 2026) | 800 characters ≈ 6 s and ≈ 4.7 MB — NFR-01 met; exactly 2,000 characters accepted in 9.2 s / 12 MB, so the hard block is verified; 2,100 characters rejected in 133 ms. See `docs/LIMITATIONS.md` — Measured limits |
-| Streamlit UI (`streamlit_app/`) | **Not built yet** — chosen 21 Oct 2026 (`docs/TRD.md` §12) |
+| Streamlit UI (`streamlit_app/`) | **In progress** — every panel is built, including rule table, preview and audio comparison; the deliberate real-key integration milestone remains (`docs/TRD.md` §12) |
 | README, demo video, public post | This README exists; demo not recorded |
 
-The backend is complete to `docs/Backend Schema.md`. The Streamlit UI is the
-remaining MVP work; until it exists the API is usable through `/docs`. If you are
-building that UI, start at `docs/Implementation Plan.md` §2.1.
+The backend is complete to `docs/Backend Schema.md`. The Streamlit UI is built in
+code; the remaining MVP work is the integration milestone in
+`docs/Implementation Plan.md` §14.4 — one deliberate real-key run plus the
+error-handling and cold-start checks. Until then, the API remains usable through
+`/docs`. If you are building that UI, start at
+`docs/Implementation Plan.md` §2.1.
 
 ---
 
@@ -35,7 +38,7 @@ building that UI, start at `docs/Implementation Plan.md` §2.1.
 - Python 3.10+ (tested on 3.11.9)
 - A Gnani API key with programme credits
 - No Node, no npm, no build step: the UI is Streamlit (`streamlit>=1.40`, installed
-  into the same venv when `streamlit_app/` lands)
+  in the same venv)
 
 ## Setup (Windows, bash)
 
@@ -70,13 +73,20 @@ The whole app is one process and one command, run **from the project root**:
 ```
 
 That works from a fresh terminal with no `cd` and no `PYTHONPATH`, because
-`streamlit_app/app.py` puts `backend/` on `sys.path` in its first four lines
-(`TRD` §16.2). If those lines are ever removed, use the fallback instead:
+`streamlit_app/app.py` bootstraps `sys.path` itself, before any `app.*` import
+(`TRD` §16.2). If that block is ever removed, use the fallback instead:
 
 ```bash
 cd backend
 ../.venv/Scripts/python.exe -m streamlit run ../streamlit_app/app.py
 ```
+
+**After editing a file under `streamlit_app/`, restart the server.** Streamlit
+1.60 re-reads `app.py` for a new browser session but keeps modules it has already
+imported (`state`, `seed`, `ui/…`) cached for the life of the process. A browser
+refresh can therefore run new `app.py` code against old imports and fail with
+`st.session_state has no attribute …`. `Ctrl+C` the terminal and run the command
+again; a refresh is not enough.
 
 The API alone, for `/docs`, the OpenAPI schema and the HTTP tests:
 
@@ -127,6 +137,7 @@ Errors use one envelope:
 
 ```bash
 .venv/Scripts/python.exe -m pytest backend -q
+.venv/Scripts/python.exe -m pytest streamlit_app/tests -q
 ```
 
 130 tests cover the rule engine (including every worked example in PRD §8.3), the
@@ -137,6 +148,17 @@ workflows end to end, the SPA catch-all leaving unknown `/api` paths as 404s,
 the POC retry script's caching, listening-sheet logic, credit guard and
 dry-run safety, and the limit-measurement script's sample construction and
 no-spend path.
+
+35 further tests cover the UI. Nineteen cover the rule table: validation wording
+and limits, duplicate detection, dirty detection, the update/add commit plan, and
+the merge between the editor's returned rows and the drafts. Sixteen cover the
+audio panel: the preflight disabled reasons, the settings echo, the sequential
+original-then-transformed calls, the cache hit, the first/second failure paths,
+and the callback ordering that puts the Original player on screen before the
+second call. They are separate because `AppTest` cannot type into a
+`data_editor` cell and should never press Generate; the widget flows are verified
+with separate `AppTest` runs against a fake TTS client. Neither the pytest suite
+nor those runs can spend a credit.
 
 ## Scripts
 
@@ -229,7 +251,7 @@ backend/app/
   models/schemas.py  Pydantic wire models
   tests/             130 tests + the 7 documented fixtures
 scripts/             developer utilities (all guarded against spending)
-streamlit_app/       the UI (not built yet)
+streamlit_app/       the UI (in progress: sidebar, script, rules, preview, audio)
 data/                runtime dictionaries and audio (gitignored)
 docs/                PRD, TRD, App Flow, UI/UX, Backend Schema, Plan
 ```
@@ -245,9 +267,17 @@ settings held constant. One listener, one session, 8 English terms — a viabili
 check, not an accuracy rate. Coimbatore improved only partly and is not seeded.
 
 1. The Streamlit UI (`streamlit_app/`, per `docs/TRD.md` §12, built by the
-   teammate from 23 Oct). It also carries two must-haves the backend deliberately
-   does not: the first-run seed dictionary (`docs/App Flow.md` §5 — the verified
-   winners; no code creates it yet) and the visible limitation note (US-09).
+   teammate from 23 Oct). Every panel is built: the first-run seed dictionary
+   (`docs/App Flow.md` §5 — the verified winners, `streamlit_app/seed.py`), the
+   sidebar selector with create/rename/delete, voice settings, the visible
+   limitation note (US-09), the script editor with its three counter states, the
+   editable rule table (add, inline edit, local validation, Save/Cancel, delete
+   with confirmation; the preview transforms the unsaved rows), the live preview
+   with pane labels and the per-rule match report, and the audio comparison
+   (Generate, the Busy state, two players, identical settings echo,
+   settings-changed reset, error banner). The remaining MVP work is the integration milestone in
+   `docs/Implementation Plan.md` §14.4: one deliberate real-key run plus the
+   error-handling and cold-start checks.
 2. Demo video and public post with `#GnaniAI` and
    `#GreatIndianAIInternshipChallenge`.
 

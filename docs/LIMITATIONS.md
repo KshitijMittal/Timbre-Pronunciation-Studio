@@ -80,6 +80,28 @@ Everything below is a consequence of that design and is accepted, not hidden.
     text with status — are kept (`UI-UX Brief` §16.1).
 24. **One extra Python dependency.** The UI needs `streamlit>=1.40` in the same
     venv. There is no Node, no build step and no separate server process.
+25. **The rule table saves as a table, not per row.** `st.data_editor` has no
+    per-row Save/Cancel buttons and no way to read a selected row, so Save and
+    Cancel act on the whole table (which is what `App Flow` §7 describes) and a
+    rule is deleted through a selector plus a second, confirming button.
+    Validation messages and the zero-match note appear as captions below the
+    table rather than inside the edited row (`UI-UX Brief` §8.6). The draft
+    logic is unit-tested directly because `AppTest` cannot type into a
+    `data_editor` cell.
+26. **The audio Busy state is a swapped button plus a status line, and the
+    sidebar cannot grey out.** A Streamlit button cannot change its own label
+    while the click handler is running, so the pressed control is replaced in a
+    placeholder by a disabled "Generating…" button, and a `st.status` line
+    carries the canonical "Generating original…" then "Generating adjusted…"
+    with a `1 of 2` / `2 of 2` counter. The sidebar still cannot grey out during
+    those calls, because it is drawn before the click branch runs; the calls are
+    synchronous, so no settings change can happen while they are in flight.
+    Audio placeholders are solid `st.container(border=True)` boxes with "Not
+    generated yet", not the dashed 72 px boxes of `UI-UX Brief` §8.9, and the
+    native player is unstyled. A partial failure keeps the successful half;
+    pressing **Generate comparison** again retries the pair, and the surviving
+    half is normally served from the memory cache at no cost (`TRD` §12.3 rules
+    9–11, §12.5).
 
 ## Measured limits (22 October 2026)
 

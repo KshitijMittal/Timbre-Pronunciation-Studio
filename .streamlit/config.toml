@@ -1,0 +1,14 @@
+# Streamlit configuration. Committed on purpose: it contains no secrets.
+#
+# gatherUsageStats = false is a requirement, not a preference: PRD FR-34 says no
+# telemetry and no external logging — the only outbound traffic may be the TTS
+# request itself. Streamlit collects usage statistics by default.
+#
+# theme.base = "light" pins the light theme regardless of the OS setting, because
+# UI-UX Brief §13 records that the demo is recorded in light mode (higher contrast
+# under video compression). It removes one thing that can differ between machines.
+[browser]
+gatherUsageStats = false
+
+[theme]
+base = "light"

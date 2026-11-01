@@ -16,20 +16,18 @@ audio with identical model, voice, language and speed settings.
 
 | Area | State |
 |---|---|
-| FastAPI backend (all documented endpoints) | Implemented, 130 tests passing |
+| FastAPI backend (all documented endpoints) | Implemented, 147 backend tests passing |
 | Rule engine, dictionary store, TTS client, audio cache | Implemented and tested |
 | `scripts/smoke_test.py` (Gate A) | **Passed 20 Oct 2026** — both models returned audio |
 | Gate B pronunciation POC | **Passed 21 Oct 2026** — 8 of 8 terms judged closer, 0 damaged, settings held constant; one listener, 8 English terms |
 | Measured limits (22 Oct 2026) | 800 characters ≈ 6 s and ≈ 4.7 MB — NFR-01 met; exactly 2,000 characters accepted in 9.2 s / 12 MB, so the hard block is verified; 2,100 characters rejected in 133 ms. See `docs/LIMITATIONS.md` — Measured limits |
-| Streamlit UI (`streamlit_app/`) | **In progress** — every panel is built, including rule table, preview and audio comparison; the deliberate real-key integration milestone remains (`docs/TRD.md` §12) |
+| Streamlit UI (`streamlit_app/`) | **Built and merged** — dictionary sidebar, rule table, preview and audio comparison, 37 UI tests. Run end to end with a real key before the merge: generated a new script with a rule applied, error banner on a bad key, rules persisted across a restart, repeat Generate served from cache at no cost |
 | README, demo video, public post | This README exists; demo not recorded |
 
-The backend is complete to `docs/Backend Schema.md`. The Streamlit UI is built in
-code; the remaining MVP work is the integration milestone in
-`docs/Implementation Plan.md` §14.4 — one deliberate real-key run plus the
-error-handling and cold-start checks. Until then, the API remains usable through
-`/docs`. If you are building that UI, start at
-`docs/Implementation Plan.md` §2.1.
+The backend and the UI are both on `main`. The UI imports `backend/app/core/` in
+the same process, so there is no separate server to start and no HTTP layer
+between them: one command runs the whole workflow. The remaining MVP work is the
+demo video and the public post (`docs/Implementation Plan.md` §25).
 
 ---
 
@@ -102,9 +100,8 @@ Open <http://127.0.0.1:8000/docs> for the interactive API. A missing
 the first click.
 
 The Streamlit command above is the demo: one process, one terminal, no build. The
-API command is for `/docs`, the OpenAPI schema and the HTTP tests. The app factory
-still mounts a `frontend/dist` directory if one ever exists, but nothing in this
-project creates it.
+API command is for `/docs`, the OpenAPI schema and the HTTP tests. There is no
+front-end build to serve: the API answers only `/api/*`.
 
 ## API
 
@@ -136,37 +133,38 @@ Errors use one envelope:
 ## Tests
 
 ```bash
-.venv/Scripts/python.exe -m pytest backend -q
-.venv/Scripts/python.exe -m pytest streamlit_app/tests -q
+.venv/Scripts/python.exe -m pytest backend streamlit_app/tests -q
 ```
 
-130 tests cover the rule engine (including every worked example in PRD §8.3), the
-dictionary store and its invariants, configuration, the TTS client's failure
-mapping (both upstream error shapes), the audio cache key and duration parsing,
-the API's error envelope and its validation paths, the transform and synthesize
-workflows end to end, the SPA catch-all leaving unknown `/api` paths as 404s,
-the POC retry script's caching, listening-sheet logic, credit guard and
-dry-run safety, and the limit-measurement script's sample construction and
-no-spend path.
+**184 tests**, green.
 
-35 further tests cover the UI. Nineteen cover the rule table: validation wording
-and limits, duplicate detection, dirty detection, the update/add commit plan, and
-the merge between the editor's returned rows and the drafts. Sixteen cover the
-audio panel: the preflight disabled reasons, the settings echo, the sequential
-original-then-transformed calls, the cache hit, the first/second failure paths,
-and the callback ordering that puts the Original player on screen before the
-second call. They are separate because `AppTest` cannot type into a
-`data_editor` cell and should never press Generate; the widget flows are verified
-with separate `AppTest` runs against a fake TTS client. Neither the pytest suite
-nor those runs can spend a credit.
+The 147 backend tests cover the rule engine (including every worked example in
+PRD §8.3), the dictionary store and its invariants, configuration (including the
+speed and timeout ranges), the TTS client's failure mapping (both upstream error
+shapes), the audio cache key, duration parsing and pay-once behaviour under
+threads, atomic writes under threads, the API's error envelope and its validation
+paths, the transform and synthesize workflows end to end, the POC retry script's
+caching, listening-sheet logic, credit guard and dry-run safety, the smoke test's
+refusal to call before confirmation, and the limit-measurement script's sample
+construction and no-spend path.
+
+37 further tests cover the UI. They check validation wording and limits, duplicate
+and dirty detection, the merge between the editor's returned rows and the drafts,
+stale editor-key pruning, the preflight disabled reasons, the settings echo, the
+sequential original-then-transformed calls, the cache hit, the first/second
+failure paths, the callback ordering that puts the Original player on screen
+before the second call, and the stale-pair checks for settings and text. One test
+boots the real `app.py` under `AppTest` with a placeholder key and a temporary data
+folder. They are separate because `AppTest` cannot type into a `data_editor` cell
+and never presses Generate, so no test can spend a credit.
 
 ## Scripts
 
-None of the three scripts is part of the shipped app.
+None of the four scripts is part of the shipped app.
 
 ```bash
 # Gate A: prove the API works and save two WAVs
-.venv/Scripts/python.exe scripts/smoke_test.py
+.venv/Scripts/python.exe scripts/smoke_test.py --confirm-spend
 
 # Gate B: 8 terms, original vs adjusted, fixed settings (16 WAVs)
 .venv/Scripts/python.exe scripts/poc_matrix.py --dry-run   # free preview
@@ -221,11 +219,11 @@ the verdicts on it.
 
 ## Credits are guarded
 
-`poc_matrix.py`, `try_respelling.py` and `measure_limits.py` will **not** spend
-credits until a human types `spend` at the prompt. They print the maximum number
-of paid calls first, and count only audio that is not already cached. A pipe, a
-heredoc or an AI agent gets EOF at that prompt and the run cancels with no call
-made. `--dry-run` never prompts because it never pays.
+`poc_matrix.py`, `try_respelling.py`, `measure_limits.py` and `smoke_test.py`
+will **not** spend credits until a human types `spend` at the prompt. They print
+the maximum number of paid calls first, and count only audio that is not already
+cached. A pipe, a heredoc or an AI agent gets EOF at that prompt and the run
+cancels with no call made. `--dry-run` never prompts because it never pays.
 
 `--confirm-spend` skips the prompt for a deliberate scripted run. Do not use it
 without saying how many calls it will make. The repository rules for any AI
@@ -235,7 +233,7 @@ assistant are in [`AGENTS.md`](AGENTS.md).
 
 ```text
 backend/app/
-  main.py            app factory, error handlers, static mount
+  main.py            app factory, error handlers, API routers
   config.py          env loading, limits, fail-fast key check
   errors.py          13-type taxonomy mapped to status codes
   catalogue.py       models and English voices
@@ -245,13 +243,14 @@ backend/app/
   core/
     pronunciation_rules.py   pure rule engine
     dictionary_store.py      atomic per-file JSON persistence
-    audio_cache.py           six-input sha256 cache, memory + disk + sidecar
+    audio_cache.py           six-input sha256 cache, disk + sidecar,
+                             one shared pay-once synthesis helper
     gnani_tts.py             Timbre client, typed failures, no retries
-    atomic.py                temp file + os.replace
+    atomic.py                unique temp file + locked os.replace
   models/schemas.py  Pydantic wire models
-  tests/             130 tests + the 7 documented fixtures
+  tests/             147 backend tests + the 7 documented fixtures
 scripts/             developer utilities (all guarded against spending)
-streamlit_app/       the UI (in progress: sidebar, script, rules, preview, audio)
+streamlit_app/       the UI: sidebar, script, rules, preview, audio (37 tests)
 data/                runtime dictionaries and audio (gitignored)
 docs/                PRD, TRD, App Flow, UI/UX, Backend Schema, Plan
 ```
@@ -266,18 +265,9 @@ replacement inserted verbatim. The original script is never mutated.
 settings held constant. One listener, one session, 8 English terms — a viability
 check, not an accuracy rate. Coimbatore improved only partly and is not seeded.
 
-1. The Streamlit UI (`streamlit_app/`, per `docs/TRD.md` §12, built by the
-   teammate from 23 Oct). Every panel is built: the first-run seed dictionary
-   (`docs/App Flow.md` §5 — the verified winners, `streamlit_app/seed.py`), the
-   sidebar selector with create/rename/delete, voice settings, the visible
-   limitation note (US-09), the script editor with its three counter states, the
-   editable rule table (add, inline edit, local validation, Save/Cancel, delete
-   with confirmation; the preview transforms the unsaved rows), the live preview
-   with pane labels and the per-rule match report, and the audio comparison
-   (Generate, the Busy state, two players, identical settings echo,
-   settings-changed reset, error banner). The remaining MVP work is the integration milestone in
-   `docs/Implementation Plan.md` §14.4: one deliberate real-key run plus the
-   error-handling and cold-start checks.
+1. The pre-freeze audit fixes are done (30 Oct 2026): inline-rule validation,
+   unique temp names and a locked replace, disk-only audio cache with one shared
+   pay-once helper, guarded paid calls in every script, and an `AppTest` boot test.
 2. Demo video and public post with `#GnaniAI` and
    `#GreatIndianAIInternshipChallenge`.
 

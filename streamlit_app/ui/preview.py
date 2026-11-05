@@ -18,9 +18,7 @@ import streamlit as st
 
 from app.config import Settings
 from app.core.pronunciation_rules import TransformResult, apply_rules
-from app.errors import AppError
 
-from state import show_error
 from ui.editor import BLOCK
 from ui.rule_draft import DraftRule, MARKUP_WARNING, engine_rules
 
@@ -35,8 +33,6 @@ BLOCKED_LIMIT = "limit"
 
 
 def compute(
-    settings: Settings,
-    count: int,
     status: str,
     drafts: list[DraftRule],
 ) -> tuple[TransformResult | None, str | None]:
@@ -56,23 +52,14 @@ def compute(
         st.session_state.transform_result = None
         return None, BLOCKED_LIMIT
 
-    try:
-        result = apply_rules(script, engine_rules(drafts))
-    except AppError as exc:
-        # Flow 4: a failed transform keeps the last good preview and only the
-        # banner changes.
-        show_error(exc)
-        result = st.session_state.transform_result
-    else:
-        st.session_state.transform_result = result
-
+    result = apply_rules(script, engine_rules(drafts))
+    st.session_state.transform_result = result
     return result, None
 
 
 def render(
     settings: Settings,
     count: int,
-    status: str,
     drafts: list[DraftRule],
     result: TransformResult | None,
     blocked: str | None,

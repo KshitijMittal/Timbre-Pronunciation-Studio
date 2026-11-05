@@ -42,8 +42,9 @@ st.set_page_config(page_title="Timbre Pronunciation Studio", layout="wide")
 def services():
     """Build the domain objects once per process, not once per rerun.
 
-    ``AudioCache`` holds the in-memory tier that makes replaying a clip free
-    (FR-28), so rebuilding it on every interaction would quietly discard it.
+    ``AudioCache`` reads disk only now, so rebuilding it is cheap, but keeping one
+    instance is still the honest shape: the store and the cache belong to the
+    process, not to a rerun.
     """
     settings = load_settings()
     return (
@@ -113,9 +114,9 @@ if has_dictionaries:
     # column and the preview report must describe the same draft rules.
     count, limit_status = editor.render(settings)
     drafts = rules.prepare()
-    transform, blocked = preview.compute(settings, count, limit_status, drafts)
+    transform, blocked = preview.compute(limit_status, drafts)
     rules.render(store, transform)
-    preview.render(settings, count, limit_status, drafts, transform, blocked)
+    preview.render(settings, count, drafts, transform, blocked)
     audio.render(settings, cache, client, transform, blocked)
 else:
     dictionaries.render_empty_state()

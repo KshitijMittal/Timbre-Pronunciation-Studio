@@ -1,4 +1,4 @@
-"""Editable rule drafts, local validation and the commit plan (``App Flow`` §7).
+"""Editable rule drafts and local validation (``App Flow`` §7).
 
 The rule table is a workbench, not a form: edits live in a draft copy of the
 dictionary's rules, the preview transforms the draft, and only **Save** writes.
@@ -61,14 +61,6 @@ class RowIssue:
     source: str
     message: str
     blocking: bool
-
-
-@dataclass(frozen=True, slots=True)
-class CommitPlan:
-    """What Save would write, in the order the store expects."""
-
-    updated: tuple[tuple[str, str, str], ...]
-    added: tuple[tuple[str, str], ...]
 
 
 def from_rules(rules: list[Rule]) -> list[DraftRule]:
@@ -160,34 +152,6 @@ def with_values(
 ) -> DraftRule:
     """Replace one row's text while keeping its identity."""
     return replace(drafts[index], source=source, replacement=replacement)
-
-
-def commit_plan(drafts: list[DraftRule], rules: list[Rule]) -> CommitPlan:
-    """Split drafts into changed rows and new rows.
-
-    Deletes are not part of this plan: they are confirmed separately, so a row
-    can never vanish because a table edit was abandoned.
-    """
-    stored = {rule.id: rule for rule in rules}
-
-    updated: list[tuple[str, str, str]] = []
-    for draft in drafts:
-        if draft.is_new:
-            continue
-        rule = stored.get(draft.id)
-        if rule is None:
-            continue
-        source = draft.source.strip()
-        replacement = draft.replacement.strip()
-        if source != rule.source or replacement != rule.replacement:
-            updated.append((draft.id, source, replacement))
-
-    added = [
-        (draft.source.strip(), draft.replacement.strip())
-        for draft in drafts
-        if draft.is_new
-    ]
-    return CommitPlan(updated=tuple(updated), added=tuple(added))
 
 
 def engine_rules(drafts: list[DraftRule]) -> list[EngineRule]:

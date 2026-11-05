@@ -63,3 +63,21 @@ def test_match_label_never_invents_a_count():
     assert rules._match_label(row, {}) == "\u2014"
     assert rules._match_label(row, {row.id: 0}) == "0"
     assert rules._match_label(row, {row.id: 3}) == "3"
+
+
+def test_stale_table_keys_spare_the_current_editor_and_the_counter():
+    keys = [
+        "rule_table_0",
+        "rule_table_1",
+        "rule_table_seq",
+        "delete_rule_0",
+        "delete_rule_select_0",
+        "delete_rule_select_1",
+        "delete_rule_id",
+    ]
+
+    assert rules._stale_table_keys(keys, current_seq=1) == [
+        "rule_table_0",
+        "delete_rule_0",
+        "delete_rule_select_0",
+    ]

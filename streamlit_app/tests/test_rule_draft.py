@@ -1,9 +1,9 @@
 """Unit tests for rule drafts (``App Flow`` §7, task 7c.4).
 
-``AppTest`` cannot type into a ``st.data_editor`` cell, so the draft, validation
-and commit logic is kept Streamlit-free in ``ui/rule_draft.py`` and tested here
-directly. The widget paths (Add, Save, Cancel, Delete) are covered by the
-``AppTest`` verification runs, not by these tests.
+``AppTest`` cannot type into a ``st.data_editor`` cell, so the draft and
+validation logic is kept Streamlit-free in ``ui/rule_draft.py`` and tested here
+directly. The widget paths (Add, Save, Cancel, Delete) are exercised by hand in
+the manual UI check; no test here claims to drive them.
 """
 
 from __future__ import annotations
@@ -122,29 +122,6 @@ def test_same_ignores_created_at_but_not_text_or_identity():
     assert rule_draft.same(left, right)
     assert not rule_draft.same(left, [draft("rule_a", "Timbre", "Tim-burr")])
     assert not rule_draft.same(left, [])
-
-
-def test_commit_plan_reports_only_changed_rows_and_new_rows():
-    rules = [stored("rule_a", "Timbre", "Tim-ber"), stored("rule_b", "Gnani", "Gyaa-nee")]
-    drafts = [
-        draft("rule_a", "Timbre", "Tim-ber"),      # unchanged
-        draft("rule_b", " Gnani ", "Gyaa-nee2"),   # changed, trimmed
-        DraftRule.new("Zentara", " Zen Taara "),   # new, trimmed
-    ]
-
-    plan = rule_draft.commit_plan(drafts, rules)
-
-    assert plan.updated == (("rule_b", "Gnani", "Gyaa-nee2"),)
-    assert plan.added == (("Zentara", "Zen Taara"),)
-
-
-def test_commit_plan_is_empty_when_nothing_changed():
-    rules = [stored("rule_a", "Timbre", "Tim-ber")]
-
-    plan = rule_draft.commit_plan(rule_draft.from_rules(rules), rules)
-
-    assert plan.updated == ()
-    assert plan.added == ()
 
 
 def test_engine_rules_drop_blank_rows_and_strip_text():

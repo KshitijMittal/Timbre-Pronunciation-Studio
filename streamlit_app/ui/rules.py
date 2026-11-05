@@ -30,6 +30,9 @@ SOURCE_COLUMN = "Source term"
 REPLACEMENT_COLUMN = "Replacement"
 MATCHES_COLUMN = "Matches"
 ID_COLUMN = "id"
+TABLE_KEY_PREFIX = "rule_table_"
+# The delete selector and button also carry the sequence, so they accumulate too.
+_EDITOR_KEY_PREFIXES = (TABLE_KEY_PREFIX, "delete_rule_select_", "delete_rule_")
 
 ZERO_MATCH = "term not found in script"
 NO_RULES = "No rules yet."
@@ -51,7 +54,33 @@ def prepare() -> list[DraftRule]:
         # safe; stale text from another dictionary must not be carried across.
         st.session_state.add_source = ""
         st.session_state.add_replacement = ""
+    _prune_table_keys()
     return st.session_state.rule_drafts
+
+
+def _prune_table_keys() -> None:
+    """Drop the editor state of every sequence but the current one.
+
+    Each Save, Cancel, Add and dictionary swap bumps ``rule_table_seq`` and so
+    creates a new widget key. Without this the session keeps one dead entry per
+    edit for as long as the tab stays open.
+    """
+    for key in _stale_table_keys(st.session_state.keys(), st.session_state.rule_table_seq):
+        del st.session_state[key]
+
+
+def _stale_table_keys(keys, current_seq: int) -> list[str]:
+    """The previous sequence's editor keys. ``rule_table_seq`` shares the prefix."""
+    keep = {f"{prefix}{current_seq}" for prefix in _EDITOR_KEY_PREFIXES}
+    return [
+        key
+        for key in keys
+        if any(
+            key.startswith(prefix) and key[len(prefix) :].isdigit()
+            for prefix in _EDITOR_KEY_PREFIXES
+        )
+        and key not in keep
+    ]
 
 
 def reload_rules() -> None:
@@ -83,7 +112,7 @@ def render(store: DictionaryStore, result: TransformResult | None) -> None:
     counts = _counts(result)
     edited = st.data_editor(
         _rows(drafts, counts),
-        key=f"rule_table_{st.session_state.rule_table_seq}",
+        key=f"{TABLE_KEY_PREFIX}{st.session_state.rule_table_seq}",
         hide_index=True,
         num_rows="fixed",
         column_order=[SOURCE_COLUMN, REPLACEMENT_COLUMN, MATCHES_COLUMN],
@@ -283,7 +312,7 @@ def _render_save_cancel(
 
 
 def _save(store: DictionaryStore) -> None:
-    """Write updates then additions, then reload from disk (Flow 3).
+    """Write the whole table in one call, then reload from disk (Flow 3).
 
     A failure shows the banner and reloads from disk, so a partial write is
     visible as what actually persisted rather than as an optimistic table.
@@ -294,14 +323,13 @@ def _save(store: DictionaryStore) -> None:
         # because the store would reject the same row one call later.
         return
 
-    plan = rule_draft.commit_plan(drafts, st.session_state.rules)
-    dictionary_id = st.session_state.active_dictionary_id
+    rows = [
+        (None if draft.is_new else draft.id, draft.source, draft.replacement)
+        for draft in drafts
+    ]
 
     try:
-        for rule_id, source, replacement in plan.updated:
-            store.update_rule(rule_id, source=source, replacement=replacement)
-        for source, replacement in plan.added:
-            store.add_rule(dictionary_id, source=source, replacement=replacement)
+        store.set_rules(st.session_state.active_dictionary_id, rows)
     except AppError as exc:
         show_error(exc)
 
@@ -381,7 +409,7 @@ def _cancel_delete() -> None:
 
 def _delete_rule(store: DictionaryStore, rule_id: str) -> None:
     try:
-        store.delete_rule(rule_id)
+        store.delete_rule(rule_id, st.session_state.active_dictionary_id)
     except AppError as exc:
         show_error(exc)
     dictionaries.refresh(store)

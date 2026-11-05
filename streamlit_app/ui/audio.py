@@ -15,9 +15,9 @@ Two framework limits shape the module, both recorded in ``TRD`` §12.3/§12.5 an
 * A dashed placeholder box is impossible without ``unsafe_allow_html``, so an
   empty audio block is a bordered container with the canonical muted text.
 
-The cache-first sequence mirrors ``api/synthesize.py`` because that module is a
-FastAPI route, not a service. The two core pieces it calls — ``AudioCache`` and
-``TimbreClient`` — are the same objects the API uses (``TRD`` §12.4).
+The cache-first sequence is ``AudioCache.get_or_synthesize``, the same helper
+``api/synthesize.py`` uses, so the API and the UI cannot drift on the cache key or
+the sidecar shape (``TRD`` §12.4, §11.2).
 """
 
 from __future__ import annotations
@@ -28,10 +28,10 @@ from typing import Callable
 import streamlit as st
 
 from app.config import Settings
-from app.core.audio_cache import AudioCache
-from app.core.gnani_tts import DEFAULT_AUDIO_CONFIG, SynthesisOutcome, TimbreClient
+from app.core.audio_cache import AudioCache, Clip
+from app.core.gnani_tts import DEFAULT_AUDIO_CONFIG, TimbreClient
 from app.core.pronunciation_rules import TransformResult
-from app.errors import AppError, InternalError
+from app.errors import AppError
 
 from state import clear_audio, show_error
 from ui.preview import BLOCKED_EMPTY, BLOCKED_LIMIT, EMPTY_PREVIEW, NO_MATCH
@@ -46,9 +46,7 @@ GENERATING_ORIGINAL = "Generating original…"
 GENERATING_ADJUSTED = "Generating adjusted…"
 STEP_ONE = "1 of 2"
 STEP_TWO = "2 of 2"
-STORE_FAILED = (
-    "Could not save the generated audio. Check that the data folder is writable."
-)
+TEXT_CHANGED = "Script or rules changed — regenerate to compare"
 
 
 @dataclass(frozen=True, slots=True)
@@ -120,6 +118,19 @@ def preflight(
     return True, None
 
 
+def texts_changed(
+    result: TransformResult | None, saved: tuple[str, str] | None
+) -> bool:
+    """True when the script or the rules changed since the pair was generated.
+
+    A pair is only labelled with text it was generated from: a silent change
+    would let the user compare two clips that do not match the current draft.
+    """
+    if result is None or saved is None:
+        return False
+    return (result.original_text, result.transformed_text) != saved
+
+
 def generate_pair(
     cache: AudioCache,
     client: TimbreClient,
@@ -140,7 +151,7 @@ def generate_pair(
     if on_step is not None:
         on_step("original")
     try:
-        original, _ = _clip(cache, client, original_text, snapshot)
+        original = _clip(cache, client, original_text, snapshot).audio
     except AppError as exc:
         return PairOutcome(None, None, exc, "original")
 
@@ -149,7 +160,7 @@ def generate_pair(
     if on_step is not None:
         on_step("adjusted")
     try:
-        adjusted, _ = _clip(cache, client, adjusted_text, snapshot)
+        adjusted = _clip(cache, client, adjusted_text, snapshot).audio
     except AppError as exc:
         return PairOutcome(original, None, exc, "adjusted")
 
@@ -161,57 +172,17 @@ def _clip(
     client: TimbreClient,
     text: str,
     snapshot: Snapshot,
-) -> tuple[bytes, bool]:
-    """Return (audio, cached). A hit costs nothing and makes replay free (FR-28)."""
-    text = text.strip()
-    key = cache.key(
-        text=text,
+) -> Clip:
+    """Cache-first, one synthesis at a time; a hit costs nothing (FR-28)."""
+    return cache.get_or_synthesize(
+        client,
+        text=text.strip(),
         model=snapshot.model,
         voice=snapshot.voice,
         language=snapshot.language,
         speed=snapshot.speed,
         audio_config=DEFAULT_AUDIO_CONFIG,
     )
-
-    cached = cache.get(key)
-    if cached is not None:
-        return cached, True
-
-    outcome: SynthesisOutcome = client.synthesize(
-        text=text,
-        model=snapshot.model,
-        voice=snapshot.voice,
-        language=snapshot.language,
-        speed=snapshot.speed,
-        audio_config=DEFAULT_AUDIO_CONFIG,
-    )
-    try:
-        cache.store(
-            key,
-            outcome.audio,
-            text=text,
-            settings=_settings_document(snapshot),
-            upstream_status=outcome.status,
-            elapsed_ms=outcome.elapsed_ms,
-        )
-    except OSError as exc:
-        raise InternalError(STORE_FAILED) from exc
-
-    return outcome.audio, False
-
-
-def _settings_document(snapshot: Snapshot) -> dict[str, object]:
-    """The sidecar's settings block, identical in shape to the API's ``echo``."""
-    return {
-        "model": snapshot.model,
-        "voice": snapshot.voice,
-        "language": snapshot.language,
-        "speed": snapshot.speed,
-        "sample_rate": DEFAULT_AUDIO_CONFIG["sample_rate"],
-        "num_channels": DEFAULT_AUDIO_CONFIG["num_channels"],
-        "sample_width": DEFAULT_AUDIO_CONFIG["sample_width"],
-        "container": DEFAULT_AUDIO_CONFIG["container"],
-    }
 
 
 def render(
@@ -223,7 +194,7 @@ def render(
 ) -> None:
     """Draw the Generate control and the two players, in that order."""
     st.subheader("Audio")
-    _drop_stale_if_settings_changed(settings)
+    _drop_stale(settings, result)
 
     ready, reason = preflight(settings, result, blocked)
     button_slot = st.empty()
@@ -275,18 +246,20 @@ def _show_busy_button(slot) -> None:
         st.button(GENERATING_LABEL, key="generating_indicator", disabled=True)
 
 
-def _drop_stale_if_settings_changed(settings: Settings) -> None:
-    """A defensive restatement of Flow 9.1.
+def _drop_stale(settings: Settings, result: TransformResult | None) -> None:
+    """Clear a pair that no longer matches the current settings or text.
 
-    The sidebar callbacks already clear the pair when a select changes. This
-    catches any other route into a mismatched snapshot, so a player can never be
-    labelled with settings it was not generated with (FR-21).
+    The sidebar callbacks already clear the pair on a settings change, and this
+    catches any other route into a mismatched snapshot (FR-21). The text check
+    does the same for the script and the rules, so a player is never labelled
+    with a pair it was not generated from.
     """
     if st.session_state.audio_result is None:
         return
-    if st.session_state.settings_snapshot == current_snapshot(settings):
-        return
-    clear_audio(SETTINGS_CHANGED)
+    if st.session_state.settings_snapshot != current_snapshot(settings):
+        clear_audio(SETTINGS_CHANGED)
+    elif texts_changed(result, st.session_state.audio_texts):
+        clear_audio(TEXT_CHANGED)
 
 
 def _generate(
@@ -301,6 +274,7 @@ def _generate(
     """The click's one path into synthesis. Two calls, sequential, frozen settings."""
     snapshot = current_snapshot(settings)
     st.session_state.settings_snapshot = snapshot
+    st.session_state.audio_texts = (result.original_text, result.transformed_text)
     st.session_state.busy = True
 
     with status_slot.container():
@@ -375,8 +349,8 @@ def _render_placeholder() -> None:
     _render_empty_clip(left, ORIGINAL_LABEL)
     _render_empty_clip(right, ADJUSTED_LABEL)
 
-    if st.session_state.audio_notice == SETTINGS_CHANGED:
-        st.caption(SETTINGS_CHANGED)
+    if st.session_state.audio_notice:
+        st.caption(st.session_state.audio_notice)
 
 
 def _render_empty_clip(column, label: str) -> None:

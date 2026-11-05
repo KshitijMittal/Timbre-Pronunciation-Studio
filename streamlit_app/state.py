@@ -15,6 +15,7 @@ _DEFAULTS: dict[str, object] = {
     "script": "",
     "transform_result": None,
     "audio_result": None,
+    "audio_texts": None,
     "settings_snapshot": None,
     "audio_notice": None,
     "error": None,
@@ -78,5 +79,6 @@ def clear_audio(reason: str | None = None) -> None:
     a different voice is worse than no player at all (``App Flow`` §9.1).
     """
     st.session_state.audio_result = None
+    st.session_state.audio_texts = None
     st.session_state.settings_snapshot = None
     st.session_state.audio_notice = reason

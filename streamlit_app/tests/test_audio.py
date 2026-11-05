@@ -1,9 +1,9 @@
 """Unit tests for the audio panel's pure logic (``App Flow`` §9, task 7c.6-7c.8).
 
 No test here can spend a credit: ``generate_pair`` is driven with a fake client
-and a real ``AudioCache`` in a temporary folder. The widget paths (Generate,
-the two players, the settings-changed reset) are verified with ``AppTest`` runs
-that never click Generate against a real key.
+and a real ``AudioCache`` in a temporary folder. Widget paths (Generate, the two
+players, the reset notices) are covered by ``test_app_boot.py`` only as far as a
+boot can see them; nothing here clicks Generate.
 """
 
 from __future__ import annotations
@@ -96,6 +96,19 @@ def test_echo_keeps_a_real_fraction(speed, expected):
     snapshot = Snapshot("timbre-v3.0", "Lakshmi", "en-IN", speed)
 
     assert audio.echo(snapshot).endswith(expected)
+
+
+def test_texts_changed_is_false_with_nothing_saved():
+    assert audio.texts_changed(result("Timbre", "Tim-ber"), None) is False
+    assert audio.texts_changed(None, ("Timbre", "Tim-ber")) is False
+
+
+def test_texts_changed_detects_a_script_or_rule_edit():
+    saved = ("Timbre", "Tim-ber")
+
+    assert audio.texts_changed(result("Timbre", "Tim-ber"), saved) is False
+    assert audio.texts_changed(result("Timbre AI", "Tim-ber"), saved) is True
+    assert audio.texts_changed(result("Timbre", "Tim-burr"), saved) is True
 
 
 def test_generate_pair_calls_original_then_transformed_with_frozen_settings(tmp_path):

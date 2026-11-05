@@ -79,6 +79,15 @@ def test_chained_rules_are_detected():
     assert "r2" not in result.chained_rule_ids
 
 
+def test_a_source_inside_a_longer_word_is_not_a_chain():
+    result = apply_rules(
+        "Gyaanee",
+        [rule("Gyaanee", "X", "r1"), rule("yaan", "Y", "r2")],
+    )
+
+    assert result.chained_rule_ids == ()
+
+
 def test_markup_replacement_is_passed_through():
     result = apply_rules("Gnani", [rule("Gnani", "<phoneme>x</phoneme>")])
     assert result.transformed_text == "<phoneme>x</phoneme>"

@@ -6,6 +6,7 @@ import threading
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Sequence
 from uuid import uuid4
 
 from pydantic import ValidationError as PydanticValidationError
@@ -13,6 +14,7 @@ from pydantic import ValidationError as PydanticValidationError
 from app.core.atomic import atomic_write_bytes
 from app.errors import Conflict, InternalError, LimitExceeded, NotFound, ValidationError
 from app.models.schemas import (
+    DICTIONARY_ID_PATTERN,
     MAX_NAME_LENGTH,
     MAX_REPLACEMENT_LENGTH,
     MAX_RULES,
@@ -22,9 +24,7 @@ from app.models.schemas import (
 )
 
 SCHEMA_VERSION = 1
-DICTIONARY_ID_PATTERN = re.compile(
-    r"^dict_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
-)
+_DICTIONARY_ID = re.compile(DICTIONARY_ID_PATTERN)
 
 
 @dataclass(frozen=True, slots=True)
@@ -180,9 +180,11 @@ class DictionaryStore:
             self._write(updated)
             return updated, updated_rule
 
-    def delete_rule(self, rule_id: str) -> Dictionary:
+    def delete_rule(
+        self, rule_id: str, dictionary_id: str | None = None
+    ) -> Dictionary:
         with self._lock:
-            dictionary, rule = self.find_rule(rule_id)
+            dictionary, rule = self.find_rule(rule_id, dictionary_id)
             now = _now()
             updated = dictionary.model_copy(
                 update={
@@ -193,7 +195,83 @@ class DictionaryStore:
             self._write(updated)
             return updated
 
-    def find_rule(self, rule_id: str) -> tuple[Dictionary, Rule]:
+    def set_rules(
+        self, dictionary_id: str, rows: Sequence[tuple[str | None, str, str]]
+    ) -> Dictionary:
+        """Replace the dictionary's rules in one write (the UI's Save).
+
+        ``rows`` holds ``(existing rule id or None, source, replacement)`` in
+        table order. A ``None`` id adds a new rule; an existing id keeps its
+        ``created_at``. One write keeps Save linear in rule count.
+        """
+        with self._lock:
+            dictionary = self.get(dictionary_id)
+            if len(rows) > MAX_RULES:
+                raise LimitExceeded(
+                    f"This dictionary has {MAX_RULES} rules, the maximum for this release."
+                )
+
+            existing = {rule.id: rule for rule in dictionary.rules}
+            sources: set[str] = set()
+            rules: list[Rule] = []
+            now = _now()
+
+            for rule_id, source, replacement in rows:
+                clean_source = _clean_source(source)
+                key = clean_source.casefold()
+                if key in sources:
+                    raise ValidationError(
+                        f'This dictionary already has a rule for "{clean_source}".'
+                    )
+                sources.add(key)
+                clean_replacement = _clean_replacement(replacement)
+
+                if rule_id is None:
+                    rules.append(
+                        Rule(
+                            id=f"rule_{uuid4()}",
+                            source=clean_source,
+                            replacement=clean_replacement,
+                            type="alias",
+                            created_at=now,
+                            updated_at=now,
+                        )
+                    )
+                    continue
+
+                stored = existing.get(rule_id)
+                if stored is None:
+                    raise NotFound("Rule not found.")
+                changed = (stored.source, stored.replacement) != (
+                    clean_source,
+                    clean_replacement,
+                )
+                rules.append(
+                    stored.model_copy(
+                        update={
+                            "source": clean_source,
+                            "replacement": clean_replacement,
+                            "updated_at": now if changed else stored.updated_at,
+                        }
+                    )
+                )
+
+            updated = dictionary.model_copy(
+                update={"rules": rules, "updated_at": now}
+            )
+            self._write(updated)
+            return updated
+
+    def find_rule(
+        self, rule_id: str, dictionary_id: str | None = None
+    ) -> tuple[Dictionary, Rule]:
+        if dictionary_id is not None:
+            dictionary = self.get(dictionary_id)
+            for rule in dictionary.rules:
+                if rule.id == rule_id:
+                    return dictionary, rule
+            raise NotFound("Rule not found.")
+
         dictionaries, _ = self.list_all()
         for dictionary in dictionaries:
             for rule in dictionary.rules:
@@ -204,7 +282,7 @@ class DictionaryStore:
     def _path(self, dictionary_id: str) -> Path:
         # The ID is user-supplied via the URL, so it never reaches the filesystem
         # until it matches the generated shape (Backend Schema §3.3, §3.4).
-        if not DICTIONARY_ID_PATTERN.fullmatch(dictionary_id):
+        if not _DICTIONARY_ID.fullmatch(dictionary_id):
             raise NotFound("Dictionary not found.")
         return self._dir / f"{dictionary_id}.json"
 
@@ -270,7 +348,7 @@ class DictionaryStore:
 
 
 def _check_invariants(dictionary: Dictionary) -> None:
-    if not DICTIONARY_ID_PATTERN.fullmatch(dictionary.id):
+    if not _DICTIONARY_ID.fullmatch(dictionary.id):
         raise _InvalidFile("invalid dictionary id")
     if dictionary.updated_at < dictionary.created_at:
         raise _InvalidFile("updated_at is before created_at")

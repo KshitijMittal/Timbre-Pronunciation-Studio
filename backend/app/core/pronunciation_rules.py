@@ -74,15 +74,19 @@ def apply_rules(text: str, rules: Sequence[Rule]) -> TransformResult:
 
 
 def _detect_chains(rules: Sequence[Rule]) -> tuple[str, ...]:
-    sources = [rule.source.casefold() for rule in rules]
+    """Rule ids whose replacement contains another rule's term as a whole word."""
+    if len(rules) < 2:
+        return ()
+
+    pattern = re.compile(
+        r"(?<!\w)(?:" + "|".join(re.escape(rule.source) for rule in rules) + r")(?!\w)",
+        re.IGNORECASE,
+    )
     chained: list[str] = []
 
-    for index, rule in enumerate(rules):
-        replacement = rule.replacement.casefold()
-        if any(
-            other and other_index != index and other in replacement
-            for other_index, other in enumerate(sources)
-        ):
+    for rule in rules:
+        own = rule.source.casefold()
+        if any(match.group(0).casefold() != own for match in pattern.finditer(rule.replacement)):
             chained.append(rule.rule_id)
 
     return tuple(chained)

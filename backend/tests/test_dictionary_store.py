@@ -89,6 +89,56 @@ def test_rules_are_added_updated_and_deleted(store):
     assert after_delete.rules == []
 
 
+def test_set_rules_updates_and_adds_in_one_write(store, tmp_path, monkeypatch):
+    dictionary = store.create("Demo")
+    _, first = store.add_rule(dictionary.id, source="Timbre", replacement="Tamber")
+    writes = []
+    original_write = store._write
+
+    def counted_write(item):
+        writes.append(item)
+        original_write(item)
+
+    monkeypatch.setattr(store, "_write", counted_write)
+
+    updated = store.set_rules(
+        dictionary.id,
+        [(first.id, "Timbre", "Tim-ber"), (None, " Zentara ", " Zen Taara ")],
+    )
+
+    assert len(writes) == 1, "Save must not rewrite the file once per row"
+    assert [(rule.id, rule.source, rule.replacement) for rule in updated.rules] == [
+        (first.id, "Timbre", "Tim-ber"),
+        (updated.rules[1].id, "Zentara", "Zen Taara"),
+    ]
+    assert updated.rules[0].created_at == first.created_at
+    assert updated.rules[1].id.startswith("rule_")
+
+    reloaded = DictionaryStore(tmp_path).get(dictionary.id)
+    assert [rule.replacement for rule in reloaded.rules] == ["Tim-ber", "Zen Taara"]
+
+
+def test_set_rules_rejects_duplicate_sources(store):
+    dictionary = store.create("Demo")
+
+    with pytest.raises(ValidationError, match="already has a rule"):
+        store.set_rules(
+            dictionary.id, [(None, "Timbre", "A"), (None, " timbre ", "B")]
+        )
+
+    assert store.get(dictionary.id).rules == []
+
+
+def test_set_rules_rejects_an_unknown_existing_rule_id(store):
+    dictionary = store.create("Demo")
+
+    with pytest.raises(NotFound):
+        store.set_rules(
+            dictionary.id,
+            [("rule_00000000-0000-4000-8000-000000000000", "A", "B")],
+        )
+
+
 def test_duplicate_source_is_rejected_case_insensitively(store):
     dictionary = store.create("Demo")
     store.add_rule(dictionary.id, source="Timbre", replacement="Tamber")

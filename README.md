@@ -16,6 +16,14 @@ audio with identical model, voice, language and speed settings.
 receive, and both clips. Captured from the app with a scratch data folder and a
 placeholder key; both clips were already cached, so no credits were spent.*
 
+## The 23-second film
+
+[![Play the 23-second film: the wrong pronunciation, the rule, then both clips from the real app](docs/media/brag.jpg)](docs/media/brag.mp4)
+
+[Watch `brag.mp4`](docs/media/brag.mp4) (2.2 MB, 1920×1080) — the wrong
+pronunciation, the rule that fixes it, and the real app where both clips came
+from. No voiceover; the audio is the product's own cached output.
+
 ---
 
 ## Status

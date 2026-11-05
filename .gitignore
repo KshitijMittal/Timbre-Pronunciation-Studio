@@ -25,3 +25,7 @@ GEMINI.md
 
 # Superseded planning dossier. `docs/` is the source of truth and IS committed.
 Gnani_AI_Project_Handoff_Master_Prompt.md
+
+# Local brag video render. The MP4 is delivered separately and the Hyperframes
+# project can be rebuilt from brag-output/brag-plan.md, so neither is committed.
+brag-output/

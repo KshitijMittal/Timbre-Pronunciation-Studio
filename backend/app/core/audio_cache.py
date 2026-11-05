@@ -5,12 +5,15 @@ import io
 import json
 import logging
 import re
+import threading
 import wave
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from app.core.atomic import atomic_write_bytes
+from app.core.gnani_tts import TimbreClient
 
 logger = logging.getLogger(__name__)
 
@@ -18,11 +21,22 @@ CACHE_KEY_PATTERN = re.compile(r"^[a-f0-9]{64}$")
 SIDECAR_SCHEMA_VERSION = 1
 
 
+@dataclass(frozen=True, slots=True)
+class Clip:
+    """One cache-first synthesis: the key, the audio, and whether it was paid for."""
+
+    key: str
+    audio: bytes
+    cached: bool
+
+
 class AudioCache:
     def __init__(self, audio_dir: Path) -> None:
         self._dir = audio_dir
         self._dir.mkdir(parents=True, exist_ok=True)
-        self._memory: dict[str, bytes] = {}
+        # One synthesis at a time: two tabs asking for the same clip must not
+        # both miss and pay for it.
+        self._synthesis_lock = threading.Lock()
 
     @staticmethod
     def key(
@@ -52,17 +66,70 @@ class AudioCache:
         return self._dir / f"{key}.wav"
 
     def get(self, key: str) -> bytes | None:
-        cached = self._memory.get(key)
-        if cached is not None:
-            return cached
-
         path = self.path(key)
-        if not path.is_file():
-            return None
+        return path.read_bytes() if path.is_file() else None
 
-        audio = path.read_bytes()
-        self._memory[key] = audio
-        return audio
+    def get_or_synthesize(
+        self,
+        client: TimbreClient,
+        *,
+        text: str,
+        model: str,
+        voice: str,
+        language: str,
+        speed: float,
+        audio_config: dict[str, Any],
+    ) -> Clip:
+        """Serve a clip from disk, or pay for it once and cache it.
+
+        The API route and the Streamlit UI both use this, so the key and sidecar
+        shape cannot drift between them. A cache-write failure still returns the
+        audio: the call is already paid for.
+        """
+        key = self.key(
+            text=text,
+            model=model,
+            voice=voice,
+            language=language,
+            speed=speed,
+            audio_config=audio_config,
+        )
+
+        with self._synthesis_lock:
+            cached = self.get(key)
+            if cached is not None:
+                return Clip(key, cached, True)
+
+            outcome = client.synthesize(
+                text=text,
+                model=model,
+                voice=voice,
+                language=language,
+                speed=speed,
+                audio_config=audio_config,
+            )
+            try:
+                self.store(
+                    key,
+                    outcome.audio,
+                    text=text,
+                    settings={
+                        "model": model,
+                        "voice": voice,
+                        "language": language,
+                        "speed": speed,
+                        "sample_rate": audio_config["sample_rate"],
+                        "num_channels": audio_config["num_channels"],
+                        "sample_width": audio_config["sample_width"],
+                        "container": audio_config["container"],
+                    },
+                    upstream_status=outcome.status,
+                    elapsed_ms=outcome.elapsed_ms,
+                )
+            except OSError:
+                logger.warning("could not cache audio key=%s", key)
+
+            return Clip(key, outcome.audio, False)
 
     def store(
         self,
@@ -75,7 +142,6 @@ class AudioCache:
         elapsed_ms: int,
     ) -> None:
         atomic_write_bytes(self.path(key), audio)
-        self._memory[key] = audio
         self._write_sidecar(
             key,
             audio,

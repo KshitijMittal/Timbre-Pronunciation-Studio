@@ -145,3 +145,17 @@ def test_upstream_timeout_is_surfaced_as_504(app, client):
     error = response.json()["error"]
     assert error["type"] == "UPSTREAM_TIMEOUT"
     assert error["message"] == "The request timed out. Shorten the script or try again."
+
+
+def test_a_cache_write_failure_still_returns_the_paid_audio(app, client, fake_tts):
+    def fail(*_args, **_kwargs):
+        raise OSError("disk full")
+
+    app.state.cache.store = fail
+
+    response = client.post("/api/synthesize", json=synth_payload())
+
+    assert response.status_code == 200
+    assert response.json()["cached"] is False
+    assert response.json()["bytes"] > 0
+    assert len(fake_tts.calls) == 1

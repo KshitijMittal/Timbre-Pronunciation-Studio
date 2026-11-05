@@ -3,17 +3,14 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 
 from app.catalogue import find_model
-from app.config import Settings
+from app.config import MAX_SPEED, MIN_SPEED, Settings
 from app.core.audio_cache import AudioCache
 from app.core.gnani_tts import DEFAULT_AUDIO_CONFIG, TimbreClient
 from app.deps import get_cache, get_settings, get_tts
-from app.errors import InternalError, LimitExceeded, ValidationError
+from app.errors import LimitExceeded, ValidationError
 from app.models.schemas import SettingsEcho, SynthesizeRequest, SynthesizeResponse
 
 router = APIRouter(tags=["synthesize"])
-
-MIN_SPEED = 0.85
-MAX_SPEED = 1.15
 
 
 @router.post("/synthesize", response_model=SynthesizeResponse)
@@ -54,15 +51,6 @@ def synthesize(
             f"Speed must be between {MIN_SPEED} and {MAX_SPEED}."
         )
 
-    cache_key = cache.key(
-        text=text,
-        model=model.id,
-        voice=payload.voice,
-        language=language,
-        speed=speed,
-        audio_config=DEFAULT_AUDIO_CONFIG,
-    )
-
     echo = SettingsEcho(
         model=model.id,
         voice=payload.voice,
@@ -74,11 +62,8 @@ def synthesize(
         container=DEFAULT_AUDIO_CONFIG["container"],
     )
 
-    cached_audio = cache.get(cache_key)
-    if cached_audio is not None:
-        return _response(cache_key, echo, cached_audio, cached=True)
-
-    outcome = tts.synthesize(
+    clip = cache.get_or_synthesize(
+        tts,
         text=text,
         model=model.id,
         voice=payload.voice,
@@ -87,21 +72,7 @@ def synthesize(
         audio_config=DEFAULT_AUDIO_CONFIG,
     )
 
-    try:
-        cache.store(
-            cache_key,
-            outcome.audio,
-            text=text,
-            settings=echo.model_dump(),
-            upstream_status=outcome.status,
-            elapsed_ms=outcome.elapsed_ms,
-        )
-    except OSError as exc:
-        raise InternalError(
-            "Could not save the generated audio. Check that the data folder is writable."
-        ) from exc
-
-    return _response(cache_key, echo, outcome.audio, cached=False)
+    return _response(clip.key, echo, clip.audio, cached=clip.cached)
 
 
 def _response(

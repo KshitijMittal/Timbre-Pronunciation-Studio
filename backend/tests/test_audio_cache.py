@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from threading import Thread
+from time import sleep
 
 import pytest
 
 from app.core.audio_cache import AudioCache
-from app.core.gnani_tts import DEFAULT_AUDIO_CONFIG
+from app.core.gnani_tts import DEFAULT_AUDIO_CONFIG, SynthesisOutcome
 
 BASE = {
     "text": "Gyaanee speaks.",
@@ -16,6 +18,17 @@ BASE = {
     "speed": 1.0,
     "audio_config": DEFAULT_AUDIO_CONFIG,
 }
+
+
+class FakeClient:
+    def __init__(self, delay: float = 0.0) -> None:
+        self.calls = 0
+        self.delay = delay
+
+    def synthesize(self, **kwargs) -> SynthesisOutcome:
+        self.calls += 1
+        sleep(self.delay)
+        return SynthesisOutcome(audio=b"RIFF-audio", status=200, elapsed_ms=5)
 
 
 @pytest.mark.parametrize(
@@ -107,3 +120,51 @@ def test_placeholder_chunk_sizes_do_not_break_the_duration(tmp_path: Path, make_
 
     sidecar = json.loads((tmp_path / f"{key}.json").read_text(encoding="utf-8"))
     assert sidecar["audio"]["duration_seconds"] == pytest.approx(0.25, abs=0.01)
+
+
+def test_get_or_synthesize_pays_once_then_reads_from_disk(tmp_path: Path):
+    cache = AudioCache(tmp_path)
+    client = FakeClient()
+
+    first = cache.get_or_synthesize(client, **BASE)
+    second = cache.get_or_synthesize(client, **BASE)
+
+    assert (first.cached, first.audio) == (False, b"RIFF-audio")
+    assert (second.cached, second.audio) == (True, b"RIFF-audio")
+    assert first.key == second.key
+    assert client.calls == 1
+    assert (tmp_path / f"{first.key}.json").is_file()
+
+
+def test_a_cache_write_failure_still_returns_the_paid_audio(tmp_path: Path, monkeypatch):
+    cache = AudioCache(tmp_path)
+    client = FakeClient()
+
+    def fail(*_args, **_kwargs) -> None:
+        raise OSError("disk full")
+
+    monkeypatch.setattr(cache, "store", fail)
+
+    clip = cache.get_or_synthesize(client, **BASE)
+
+    assert clip.cached is False
+    assert clip.audio == b"RIFF-audio"
+    assert client.calls == 1
+
+
+def test_two_threads_asking_for_one_clip_pay_once(tmp_path: Path):
+    cache = AudioCache(tmp_path)
+    client = FakeClient(delay=0.1)
+    clips = []
+
+    threads = [
+        Thread(target=lambda: clips.append(cache.get_or_synthesize(client, **BASE)))
+        for _ in range(2)
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert client.calls == 1
+    assert sorted(clip.cached for clip in clips) == [False, True]

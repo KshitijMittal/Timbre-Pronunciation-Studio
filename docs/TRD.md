@@ -56,8 +56,8 @@ It does **not** restate product rationale. Where a requirement is referenced, th
 │   pronunciation_rules.py   ← the product's core             │
 │   dictionary_store.py      ← JSON persistence               │
 │   gnani_tts.py             ← HTTP client to Gnani           │
-│   audio_cache.py           ← memory + disk cache            │
-│   atomic.py                ← temp file + os.replace         │
+│   audio_cache.py           ← disk cache + sidecar, pay-once helper  │
+│   atomic.py                ← unique temp file + locked replace      │
 └──────────────────────────┬──────────────────────────────────┘
 (`config.py` — env loading and limits — and `errors.py` — the typed error
 taxonomy — sit beside `core/` in `backend/app/`, because both the UI and the
@@ -141,7 +141,7 @@ timbre-pronunciation-studio/
     Implementation Plan.md
   backend/
     app/
-      main.py                  # app factory, error handlers, static mount
+      main.py                  # app factory, error handlers, API routers
       config.py                # env loading, limits, defaults
       errors.py                # error taxonomy + HTTP mapping
       catalogue.py             # models and English voices
@@ -158,8 +158,8 @@ timbre-pronunciation-studio/
         pronunciation_rules.py # rule engine (pure functions)
         dictionary_store.py    # JSON CRUD
         gnani_tts.py           # TTS client
-        audio_cache.py         # session cache + disk write
-        atomic.py              # temp file + os.replace
+        audio_cache.py         # disk cache + sidecar, pay-once helper
+        atomic.py              # unique temp file + locked replace
       models/
         schemas.py             # Pydantic models
     tests/
@@ -172,6 +172,7 @@ timbre-pronunciation-studio/
       test_config.py
       test_gnani_tts.py
       test_audio_cache.py
+      test_atomic.py
       test_try_respelling.py
       test_measure_limits.py
       fixtures/                # 6 dictionary files + export_valid.json
@@ -186,13 +187,14 @@ timbre-pronunciation-studio/
       settings.py              # model + voice selectors
       editor.py                # script input, counter, limit state
       rules.py                 # rule table: draft, validate, save, cancel, delete
-      rule_draft.py            # draft rows, validation, commit plan (no Streamlit)
+      rule_draft.py            # draft rows and validation (no Streamlit)
       preview.py               # original vs transformed, match report
       audio.py                 # Generate, two players, settings echo
     tests/
-      test_rule_draft.py       # validation, dirty detection, commit plan
-      test_rule_table.py       # editor-row merge
+      test_rule_draft.py       # validation, dirty detection
+      test_rule_table.py       # editor-row merge, stale-key pruning
       test_audio.py            # preflight, echo, sequential calls, cache, failures
+      test_app_boot.py         # the real app.py boots under AppTest
   scripts/
     smoke_test.py              # Milestone 2 live API check
     poc_matrix.py              # Milestone 3 before/after generator
@@ -224,12 +226,11 @@ timbre-pronunciation-studio/
 | `GNANI_DEFAULT_MODEL` | No | `timbre-v3.0` | Preselected model |
 | `GNANI_DEFAULT_VOICE` | No | `Lakshmi` | Preselected voice |
 | `GNANI_LANGUAGE` | No | `en-IN` | Fixed in this release (FR-19) |
-| `GNANI_SPEED` | No | `1.0` | Fixed; API clamps to 0.85–1.15 |
-| `GNANI_TIMEOUT_SECONDS` | No | `60` | Per-request timeout |
+| `GNANI_SPEED` | No | `1.0` | Fixed; must be 0.85–1.15 or startup fails |
+| `GNANI_TIMEOUT_SECONDS` | No | `60` | Per-request timeout; must be > 0 |
 | `SCRIPT_WARN_CHARS` | No | `800` | Soft warning threshold |
 | `SCRIPT_BLOCK_CHARS` | No | `2000` | Hard rejection threshold |
 | `DATA_DIR` | No | `./data` | Dictionaries and audio |
-| `CORS_ORIGINS` | No | `http://127.0.0.1:5173,http://localhost:5173` | Dev only; unused in single-process mode |
 
 ### 6.2 Loading rules
 
@@ -556,14 +557,23 @@ cache_key = sha256(f"{text}\x1f{model}\x1f{voice}\x1f{language}\x1f{speed}\x1f{a
 
 Including every setting guarantees that changing a voice produces a different key — a mis-keyed cache would silently break the comparison and is the single most damaging caching bug possible here.
 
-### 11.2 Two-tier behaviour
+### 11.2 Disk cache
 
-| Tier | Lifetime | Purpose |
+| Storage | Lifetime | Purpose |
 |---|---|---|
-| In-memory `dict[str, bytes]` | Process lifetime | Avoids re-spending credits on repeated plays (FR-28) |
-| Disk file `data/audio/{cache_key}.wav` | Until deleted manually | Lets the user inspect and archive output (FR-24) |
+| `data/audio/{cache_key}.wav` | Until deleted manually | Avoids re-spending credits on repeated plays (FR-28); lets the user inspect and archive output (FR-24) |
+| `data/audio/{cache_key}.json` | Same | Sidecar: the text, settings and upstream status the clip was generated with |
 
-On a cache hit, the in-memory copy is served if present; otherwise the disk file is read back into memory.
+There is no in-memory tier. The disk file is the cache, so a restart and a second
+process both see the same hits, and memory cannot grow with the number of clips.
+Reads are one `read_bytes()`; the files are small enough at this scale, and a
+process-lifetime copy would hide a stale file after a manual cleanup.
+
+`AudioCache.get_or_synthesize()` is the one pay-once path: it computes the key,
+returns a hit from disk, or synthesises once under a process lock and writes the
+WAV and its sidecar. The API route and the Streamlit panel both call it, so the key
+and sidecar shape cannot drift. If the cache write fails after a paid call, the
+audio is still returned — the credit has already been spent.
 
 ### 11.3 Cleanup
 
@@ -595,7 +605,7 @@ streamlit_app/app.py
  └─ ui/audio.py                   Generate button, two players, settings echo
 ```
 
-The table's draft rows, validation and commit plan live in
+The table's draft rows and validation live in
 `streamlit_app/ui/rule_draft.py`. That module imports no Streamlit, so it is
 unit-tested directly rather than through `AppTest`.
 
@@ -637,14 +647,16 @@ unit-tested directly rather than through `AppTest`.
 7. **Rules are edited as drafts; the preview never waits for a save.** The table
    writes nothing until Save. The Matches column and the preview both transform
    the draft rows (`ui/rule_draft.py`), so an unsaved edit shows its effect at
-   once (Flow 3). Save validates locally, writes `update_rule` calls then
-   `add_rule` calls, and reloads from disk so a partial failure is visible as
+   once (Flow 3). Save validates locally, writes the whole table in one
+   `set_rules` call, and reloads from disk so a partial failure is visible as
    what actually persisted. Two Streamlit limits are accepted and recorded in
    `docs/LIMITATIONS.md`: `st.data_editor` has neither per-row buttons nor row
    selection, so Save/Cancel act on the whole table (as Flow 3 describes) and
    Delete is a rule selector plus an in-place confirmation, disabled while edits
    are unsaved. The widget key carries a sequence number so Save/Cancel replace
-   the editor's own state instead of leaving discarded cells behind.
+   the editor's own state instead of leaving discarded cells behind; the session
+   drops the previous sequence's key on the next run so dead entries do not
+   accumulate.
 8. **A cell edit triggers one rerun.** The editor's new value is only readable
    after it renders, which is after that run's transform, so the table stores the
    merged drafts and reruns once. Without it the Matches column and the preview
@@ -661,17 +673,19 @@ unit-tested directly rather than through `AppTest`.
    counter. Once the first call succeeds, its player is drawn before the second
    starts (`App Flow` §9 step H), then one rerun restores the real button and the
    finished pair (§12.5).
-10. **The audio panel is cache-first.** It repeats the cache-key / get / synthesise
-   / store sequence from `api/synthesize.py`, because that module is a FastAPI
-   route rather than a service. `AudioCache` and `TimbreClient` are the same core
-   objects the API uses, so an identical request — including a second Generate —
-   is served from memory or disk with no upstream call (FR-28).
-11. **Settings are compared, not trusted.** The sidebar callbacks already clear
-   the pair on a model or voice change (Flow 9.1); the panel also checks the
-   stored snapshot against the current settings on every run, so no player can be
-   labelled with settings it was not generated with (FR-21). When a pair is
-   cleared, both blocks return to "Not generated yet" plus "Settings changed —
-   regenerate to compare".
+10. **The audio panel is cache-first, through the shared helper.**
+   `AudioCache.get_or_synthesize()` is the same call `api/synthesize.py` makes,
+   so the cache key and sidecar shape cannot drift between the API and the UI. An
+   identical request — including a second Generate — is served from disk with no
+   upstream call (FR-28).
+11. **Settings and text are compared, not trusted.** The sidebar callbacks
+   already clear the pair on a model or voice change (Flow 9.1); the panel also
+   checks the stored snapshot against the current settings on every run, and the
+   stored script-plus-transformed text against the current ones, so no player can
+   be labelled with a pair it was not generated from (FR-21). When a pair is
+   cleared, both blocks return to "Not generated yet" plus either "Settings
+   changed — regenerate to compare" or "Script or rules changed — regenerate to
+   compare".
 
 ### 12.4 What the UI calls
 
@@ -689,12 +703,10 @@ from app.config import load_settings
 `backend/app/api/` remains the tested HTTP contract (`Backend Schema`). If the UI
 ever needs to run against it instead, nothing in `backend/` changes.
 
-The one piece the UI repeats is the cache-first sequence around synthesis. The
-route in `api/synthesize.py` is a FastAPI handler, not a service, so the audio
-panel calls the same `AudioCache.key/get/store` and `TimbreClient.synthesize`
-directly. The cache key and sidecar shape are therefore identical to the API's,
-and a replay costs nothing; the settings echo is rendered from the same frozen
-values that were sent.
+The one piece the UI used to repeat is now shared: the audio panel calls
+`AudioCache.get_or_synthesize()`, the same helper `api/synthesize.py` uses, so the
+cache key and sidecar shape are identical by construction and a replay costs
+nothing. The settings echo is rendered from the same frozen values that were sent.
 
 ### 12.5 Styling
 
@@ -752,7 +764,7 @@ That reversibility is the only reason this is a cheap rejection to record.
 | NFR-07 | App starts with a clear error and exits if the key is missing | Absolute | Test |
 | NFR-08 | Works offline except for synthesis | Transformation, editing and playback of cached audio function without network | Manual |
 | NFR-09 | Supported browsers | Latest Chrome and Edge on Windows | Manual |
-| NFR-10 | Keyboard navigable | All controls reachable by Tab; visible focus ring | Manual |
+| NFR-10 | Keyboard navigable | All controls reachable by Tab; visible focus ring | **PASS** — owner keyboard-only walkthrough of the full workflow, reported working before the freeze. Manual, no automated test |
 
 ---
 
@@ -774,16 +786,20 @@ That reversibility is the only reason this is a cheap rejection to record.
 |---|---|
 | `test_pronunciation_rules.py` | All PRD §8.3 examples; empty rules; zero-match reporting; chained-rule detection; Unicode source; 50-rule performance; determinism |
 | `test_dictionary_store.py` | Create, rename, delete; duplicate name rejection; atomic write; corrupt and future-version files skipped; reload after restart |
-| `test_transform_api.py` | 200 happy path; 400 on duplicate inline source; 400 over block limit; warn status at 800; 404 unknown dictionary; inline rules override the stored dictionary |
-| `test_synthesize_api.py` | Voice/model mismatch; unsupported language; speed range; cache hit (`cached: true`) with no second upstream call; audio served at `/api/audio/{key}.wav` |
+| `test_transform_api.py` | 200 happy path; 400 on duplicate or blank inline source/replacement; 400 over block limit (whitespace excluded); warn status at 800; 404 unknown dictionary; inline rules override the stored dictionary |
+| `test_synthesize_api.py` | Voice/model mismatch; unsupported language; speed range; cache hit (`cached: true`) with no second upstream call; audio served at `/api/audio/{key}.wav`; a failed cache write still returns the paid audio |
 | `test_api_errors.py` | 422 envelope for a malformed body; 404 envelope for an unknown path |
-| `test_config.py` | Missing key raises at startup; defaults applied correctly |
+| `test_config.py` | Missing key raises at startup; defaults applied correctly; speed outside 0.85–1.15 rejected; non-positive timeout rejected |
 | `test_gnani_tts.py` | Status-to-error mapping; both upstream error-body shapes; empty 200 body; timeout and connection failure |
-| `test_audio_cache.py` | Every one of the six key inputs changes the key; duration from the PCM payload, not the declared frame count |
-| `test_try_respelling.py` | Manifest loading, sheet rendering, credit guard, dry-run safety |
+| `test_audio_cache.py` | Every one of the six key inputs changes the key; duration from the PCM payload, not the declared frame count; the shared helper pays once and then reads disk; a failed cache write keeps the paid audio; two threads asking for one clip pay once |
+| `test_atomic.py` | Six concurrent writes to one target all land, whole, with no temp file left behind |
+| `test_try_respelling.py` | Manifest loading, sheet rendering, credit guard, dry-run safety, and reuse of audio the shared cache already holds |
+| `test_smoke_test.py` | The script refuses to make its first paid call until the human confirms |
 | `test_measure_limits.py` | TQ4 samples stay within 800 characters and are distinct (a cached sample would time the cache, not the network); ceiling probes straddle the 2,000-character block; dry run constructs no client and writes no result; `--probe` narrows the plan to one label and rejects an unknown label; **a free rerun keeps the timings already on file instead of blanking them**, records made under other settings or for removed labels are dropped, character counts stay aligned with the timings, and a failed cache write does not lose a paid measurement |
 
-All ten files plus `conftest.py` exist; the suite is **130 tests**, green.
+All twelve backend files plus `conftest.py` exist; the backend suite is **147
+tests**, green. The Streamlit UI adds **37** in `streamlit_app/tests/`, so the
+documented command in §16.4 runs **184**.
 
 ### 15.3 Manual walkthrough (release checklist)
 
@@ -879,7 +895,7 @@ The same single command as §16.2. One process, no build, no proxy, no CORS.
 ### 16.4 Tests
 
 ```bash
-.venv/Scripts/python.exe -m pytest backend -q
+.venv/Scripts/python.exe -m pytest backend streamlit_app/tests -q
 ```
 
 ### 16.5 Deployment
@@ -900,9 +916,9 @@ None. Local execution only. The submission requires a demo video and public post
 | Arbitrary file read | No endpoint accepts a path; all file access is derived from validated IDs |
 | XSS | Streamlit renders user text as text; `unsafe_allow_html` stays off, so scripts and replacements can never become HTML |
 | Injection | No SQL, no shell execution, no `eval` |
-| CORS | Restricted to localhost dev origins; irrelevant in single-process mode |
+| CORS | Not enabled: the app serves only `/api/*` and the UI calls `core/` in-process, so no browser origin needs it |
 | Untrusted upstream data | Response bodies parsed defensively; non-JSON error bodies do not crash the client |
-| Privacy | No telemetry; the only outbound traffic is the TTS request. Streamlit's own usage statistics are **off by default**, so `.streamlit/config.toml` sets `browser.gatherUsageStats = false` — without it the demo would report usage to Streamlit and breach FR-34 |
+| Privacy | No telemetry; the only outbound traffic is the TTS request. Streamlit gathers usage statistics **by default**, so `.streamlit/config.toml` sets `browser.gatherUsageStats = false` — without it the demo would report usage to Streamlit and breach FR-34 |
 
 ---
 
@@ -931,7 +947,7 @@ None. Local execution only. The submission requires a demo video and public post
 | FR-13, FR-14, FR-15 | Stretch — endpoint reserved, not implemented before freeze |
 | FR-17, FR-18, FR-19, FR-20, FR-21 | `GET /api/options`, `streamlit_app/ui/settings.py`, settings echo in synthesize response |
 | FR-23, FR-24, FR-25, FR-26, FR-27 | `synthesize.py`, `audio_cache.py`, `streamlit_app/ui/audio.py`, `st.error` on `AppError` |
-| FR-28 | `audio_cache.py` in-memory tier |
+| FR-28 | `audio_cache.py` disk cache via `get_or_synthesize` |
 | FR-29 | Stretch — not implemented |
 | FR-30, FR-31, FR-32, FR-33, FR-34 | `config.py`, `.gitignore`, §17 |
 | NFR-01…NFR-10 | §14 |
@@ -948,7 +964,7 @@ None. Local execution only. The submission requires a demo video and public post
 | TQ4 | Actual p95 latency for 800 characters? | **Resolved 22 Oct 2026: PASS, with a caveat.** 5 distinct scripts of 787–799 characters at `timbre-v3.0`/`Lakshmi`/`en-IN`/`1.0`: 4,377 / 4,744 / 6,157 / 6,900 / 6,905 ms → median 6,157 ms, slowest-of-five 6,905 ms, inside the 10 s target. Nearest-rank p95 with n=5 is the slowest sample, so this is a lower bound on the true p95, not a population figure. Response size 4.4–4.8 MB per script. Method: `scripts/measure_limits.py` | You |
 | TQ5 | Does the API enforce a length ceiling below 2,000 characters? | **Resolved 22 Oct 2026: no — the ceiling sits between 2,000 and 2,100.** 1,897 characters → HTTP 200, 10,970 ms, 11.2 MB. 2,000 characters → HTTP 200, 9,197 ms, 12.0 MB. 2,100 characters → failure in **133 ms**, surfaced by the client as `UPSTREAM_ERROR` (502). The speed of the rejection implies a gateway/size guard, not a synthesis timeout, and the upstream returns no usable length message. The 2,001–2,099 band is untested but unreachable through the app, so the exact threshold does not affect shipped behaviour | You |
 | TQ5b | Does exactly 2,000 characters — the largest script the app will send — succeed? | **Resolved 22 Oct 2026: yes.** 2,000 characters → HTTP 200 in 9,197 ms, 11,965,484 bytes. The local block at 2,000 (`SCRIPT_BLOCK_CHARS`) is therefore correct rather than merely cautious: the maximum script the app allows is one the API accepts, and 2,001 is where the opaque 502 would begin. No code change needed | You |
-| TQ6 | Does `streamlit run` launched from `backend/` import `app.core` cleanly on Windows? | **Resolved by design, unverified in practice.** §16.2 makes the entry point bootstrap `sys.path`, so the question stops depending on cwd. Confirm once when `streamlit_app/app.py` first runs | Teammate |
+| TQ6 | Does `streamlit run` launched from `backend/` import `app.core` cleanly on Windows? | **Resolved in practice 30 Oct 2026 from the repository root.** The §16.2 command starts the app, imports `app.core` and runs the full workflow. The `backend/`-cwd fallback is not exercised, and the bootstrap makes the question independent of cwd | Teammate |
 
 ---
 

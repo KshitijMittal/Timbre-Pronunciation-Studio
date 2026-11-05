@@ -100,8 +100,8 @@ Everything below is a consequence of that design and is accepted, not hidden.
     generated yet", not the dashed 72 px boxes of `UI-UX Brief` §8.9, and the
     native player is unstyled. A partial failure keeps the successful half;
     pressing **Generate comparison** again retries the pair, and the surviving
-    half is normally served from the memory cache at no cost (`TRD` §12.3 rules
-    9–11, §12.5).
+    half is normally served from the disk cache at no cost (`TRD` §12.3 rules
+    9–11, §11.2, §12.5).
 
 ## Measured limits (22 October 2026)
 

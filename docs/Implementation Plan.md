@@ -5,7 +5,7 @@
 | Document | Implementation Plan |
 | Version | 1.0 |
 | Date | 20 October 2026 |
-| Status | Approved and in execution. Backend milestones M1–M3 and M5–M8 are done (130 tests green); the limit measurement (10.6) is done. Streamlit UI, M9 and the rest of M10–M13 remain. Last backend check: 22 October 2026 |
+| Status | Approved and in execution. Backend milestones M1–M3 and M5–M8 are done (147 backend tests green); the limit measurement (10.6) is done. The Streamlit UI (M7b–d) and the audio comparison (M9) are built, merged in PR #1 on 30 October 2026, and were run end to end with a real key before the merge. The pre-freeze audit fixes are done; 184 tests green. Remaining: M10–M13, including the demo video. Last check: 30 October 2026 |
 | Parent documents | `docs/PRD.md`, `docs/TRD.md`, `docs/App Flow.md`, `docs/UI-UX Brief.md`, `docs/Backend Schema.md` (all v1.0) |
 | Owners | [You] — backend, rule engine, POC, tests; [Teammate] — Streamlit UI, README, demo video |
 | Build window | 20 October – 10 November 2026 |
@@ -339,7 +339,7 @@ The list is kept in order so that a later cut never starts with a must-have.
 | Order | Item | Requirement | Saves |
 |---|---|---|---|
 | 1 | Export / import | FR-13, FR-14 | 3 h |
-| 2 | Session audio caching | FR-28 | 1 h — **already implemented** (`audio_cache.py` memory tier), so there is nothing left to cut here |
+| 2 | Session audio caching | FR-28 | 1 h — **already implemented** (`audio_cache.py` disk cache), so there is nothing left to cut here |
 | 3 | Dark mode | `UI-UX Brief` §9 | 4 h |
 | 4 | Mobile rule cards + preview toggle | `UI-UX Brief` §7.2 | 6 h |
 | 5 | Select-to-add | `App Flow` §7 | 2 h |
@@ -426,7 +426,7 @@ Bounded, not open-ended.
 | 6.3 | Write `core/gnani_tts.py`: `synthesize()` with the exact body from `TRD` §9.1 | Returns bytes |
 | 6.4 | Map every upstream failure to a typed error (`TRD` §9.2) | 8 mappings covered |
 | 6.5 | Implement the six-input cache key (`Backend Schema` §9.1) | 64 hex chars |
-| 6.6 | Write `core/audio_cache.py`: memory tier, disk write, WAV-then-sidecar order | Crash-safe ordering |
+| 6.6 | Write `core/audio_cache.py`: disk write, WAV-then-sidecar order (the in-memory tier added here was removed by the 30 October audit, §25) | Crash-safe ordering |
 | 6.7 | Add logging: method, model, voice, char count, status, elapsed — never key or text | Audited by eye |
 | 6.8 | Test: changing each of the six inputs produces a different cache key | 6 assertions pass |
 | 6.9 | Commit: `M6: TTS client, error mapping, audio cache` | — |
@@ -453,7 +453,7 @@ work is M7b–d in `streamlit_app/`, now 5–7 h instead of 18–22 h.
 | 7a.4 | `api/dictionaries.py`, `api/rules.py` | CRUD matches §7 |
 | 7a.5 | `api/transform.py` | Zero upstream calls |
 | 7a.6 | `api/synthesize.py`, `api/audio.py` | Path validated by regex |
-| 7a.7 | `main.py`: app factory, CORS for dev, static mount for a built UI (inert with Streamlit) | `/docs` renders |
+| 7a.7 | `main.py`: app factory, error handlers, API routers | `/docs` renders |
 | 7a.8 | Test with `TestClient`, TTS mocked | No credits spent |
 | 7a.9 | Commit: `M7a: HTTP layer complete` | — |
 
@@ -676,17 +676,22 @@ agreement they were built on, kept for the record rather than as a pending gate.
 
 ## 25. Next action
 
-**Gate B passed on 21 October (8 of 8 closer, 0 damaged), so M4 and M7b are
-unblocked. M1, M2, M3, M5, M6, M7a and M8 are done; the UI is the remaining work.**
+**Gate B passed on 21 October (8 of 8 closer, 0 damaged), and the Streamlit UI is
+no longer the remaining work: it was built by the teammate, merged in PR #1 on
+30 October 2026, and run end to end with a real key before that merge. The
+pre-freeze audit is closed too; what is left is the demo and the submission.**
 
-1. Commit and push the private repository, then add the teammate as a collaborator
-   with Write access (§3.2). Nothing else can start until her clone runs.
-2. Adopt the winning rules as the seed dictionary (M4.1). They are listed in §8.1
-   and in `App Flow` §5; Coimbatore is excluded because its improvement was only
-   partial.
-3. Start M7b on 23 October with the teammate (Streamlit, `TRD` §12), or alone if
-   no teammate is confirmed.
-4. The backend was built before Gate B was decided — a real deviation from PRD
-   §11.1, recorded here rather than hidden. It cost time before knowing, but no
-   code is wasted: the UI imports the rule engine, the store and the cache either
-   way. The deviation is not repeated at Checkpoint 2.
+1. The pre-freeze audit fixes are done (30 October 2026): inline-rule validation in
+   `api/transform.py`, unique temp names and a locked replace in `core/atomic.py`,
+   a disk-only `audio_cache.py` with one shared pay-once helper, a shared credit
+   guard and key loader for every script (including `scripts/smoke_test.py`), and
+   an `AppTest` boot test for the UI.
+2. Re-run `pytest backend streamlit_app/tests -q` (184 green) and the manual
+   walkthrough in `TRD` §15.3.
+3. Record the demo video and write the public post (M12), then publish and submit
+   (M13).
+
+**Recorded deviation:** the backend was built before Gate B was decided — a real
+deviation from PRD §11.1, recorded here rather than hidden. It cost time before
+knowing, but no code is wasted: the UI imports the rule engine, the store and the
+cache either way. The deviation is not repeated at Checkpoint 2.

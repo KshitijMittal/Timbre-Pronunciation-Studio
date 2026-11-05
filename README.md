@@ -81,10 +81,9 @@ cd backend
 
 **After editing a file under `streamlit_app/`, restart the server.** Streamlit
 1.60 re-reads `app.py` for a new browser session but keeps modules it has already
-imported (`state`, `seed`, `ui/…`) cached for the life of the process. A browser
-refresh can therefore run new `app.py` code against old imports and fail with
-`st.session_state has no attribute …`. `Ctrl+C` the terminal and run the command
-again; a refresh is not enough.
+imported (`seed`, `csv_io`) cached for the life of the process. A browser
+refresh can therefore run new `app.py` code against old imports. `Ctrl+C` the
+terminal and run the command again; a refresh is not enough.
 
 The API alone, for `/docs`, the OpenAPI schema and the HTTP tests:
 
@@ -136,7 +135,7 @@ Errors use one envelope:
 .venv/Scripts/python.exe -m pytest backend streamlit_app/tests -q
 ```
 
-**184 tests**, green.
+**167 tests**, green.
 
 The 147 backend tests cover the rule engine (including every worked example in
 PRD §8.3), the dictionary store and its invariants, configuration (including the
@@ -148,15 +147,13 @@ caching, listening-sheet logic, credit guard and dry-run safety, the smoke test'
 refusal to call before confirmation, and the limit-measurement script's sample
 construction and no-spend path.
 
-37 further tests cover the UI. They check validation wording and limits, duplicate
-and dirty detection, the merge between the editor's returned rows and the drafts,
-stale editor-key pruning, the preflight disabled reasons, the settings echo, the
-sequential original-then-transformed calls, the cache hit, the first/second
-failure paths, the callback ordering that puts the Original player on screen
-before the second call, and the stale-pair checks for settings and text. One test
-boots the real `app.py` under `AppTest` with a placeholder key and a temporary data
-folder. They are separate because `AppTest` cannot type into a `data_editor` cell
-and never presses Generate, so no test can spend a credit.
+20 further tests drive the real `app.py` under `AppTest` with a placeholder key and
+a temporary data folder. They check first-run seeding, the later-session empty
+editor, dropping a clip from an older draft, disabling Generate when no rule
+matched, editing a rule and saving or cancelling it, adding a rule as a draft,
+refusing a duplicate term, opening the new dictionary dialog from `+`, creating
+and deleting a dictionary, and the CSV parser/exporter on its own. Nothing is
+clicked that could synthesize, so no test can spend a credit.
 
 ## Scripts
 
@@ -250,7 +247,7 @@ backend/app/
   models/schemas.py  Pydantic wire models
   tests/             147 backend tests + the 7 documented fixtures
 scripts/             developer utilities (all guarded against spending)
-streamlit_app/       the UI: sidebar, script, rules, preview, audio (37 tests)
+streamlit_app/       the UI: app.py plus seed.py and csv_io.py (20 tests)
 data/                runtime dictionaries and audio (gitignored)
 docs/                PRD, TRD, App Flow, UI/UX, Backend Schema, Plan
 ```

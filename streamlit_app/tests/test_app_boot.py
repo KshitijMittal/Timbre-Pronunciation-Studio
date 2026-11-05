@@ -1,8 +1,4 @@
-"""Boot the real Streamlit app once, against a placeholder key and a temp data folder.
-
-The rest of the UI tests import modules directly. This is the only test that runs
-``app.py`` end to end, so it catches the failures a module import cannot: a wrong
-import order, a missing session-state key, a page that raises on first render.
+"""Boot the real Streamlit app against a placeholder key and a temp data folder.
 
 No credit can be spent: nothing is clicked, and ``GNANI_API_KEY`` is a placeholder
 that the app only stores for a later Generate.
@@ -14,17 +10,67 @@ from pathlib import Path
 
 from streamlit.testing.v1 import AppTest
 
+from app.core.dictionary_store import DictionaryStore
+from seed import SAMPLE_SCRIPT, SEED_NAME, SEED_RULES
+
 APP = Path(__file__).resolve().parents[1] / "app.py"
 
 
-def test_app_boots_and_seeds_a_fresh_data_dir(monkeypatch, tmp_path):
+def boot(monkeypatch, data_dir: Path) -> AppTest:
     monkeypatch.setenv("GNANI_API_KEY", "placeholder-not-a-real-key")
-    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("DATA_DIR", str(data_dir))
+    return AppTest.from_file(str(APP), default_timeout=60).run()
 
-    app = AppTest.from_file(str(APP), default_timeout=60).run()
+
+def test_first_run_seeds_the_verified_dictionary_and_sample_script(monkeypatch, tmp_path):
+    app = boot(monkeypatch, tmp_path)
 
     assert not app.exception
-    assert app.title[0].value == "Timbre Pronunciation Studio"
-    assert (tmp_path / "dictionaries").is_dir()
-    assert app.session_state["script"]
-    assert app.session_state["active_dictionary_id"]
+    assert app.session_state["seeded"] is True
+
+    dictionaries, warnings = DictionaryStore(tmp_path).list_all()
+    assert warnings == []
+    assert [d.name for d in dictionaries] == [SEED_NAME]
+    assert [(r.source, r.replacement) for r in dictionaries[0].rules] == list(SEED_RULES)
+
+    assert app.session_state["active_id"] == dictionaries[0].id
+    assert app.text_area(key="script_text").value == SAMPLE_SCRIPT
+
+
+def test_a_clip_from_an_older_draft_is_dropped(monkeypatch, tmp_path):
+    app = boot(monkeypatch, tmp_path)
+    app.session_state["audio_result"] = {
+        "sig": ("old text", "old transformed text", "m", "v"),
+        "original": b"",
+        "adjusted": b"",
+        "original_cached": True,
+        "adjusted_cached": True,
+    }
+
+    app.run()
+
+    assert not app.exception
+    assert app.session_state["audio_result"] is None
+
+
+def test_generate_is_disabled_when_no_rule_matches(monkeypatch, tmp_path):
+    app = boot(monkeypatch, tmp_path)
+    app.text_area(key="script_text").set_value("Nothing to change here.").run()
+
+    assert not app.exception
+    assert app.button(key="generate").disabled is True
+    assert any("No rules matched" in c.value for c in app.caption)
+
+
+def test_a_later_session_keeps_the_dictionary_but_starts_with_an_empty_editor(
+    monkeypatch, tmp_path
+):
+    boot(monkeypatch, tmp_path)
+
+    app = boot(monkeypatch, tmp_path)
+
+    assert not app.exception
+    dictionaries, _ = DictionaryStore(tmp_path).list_all()
+    assert len(dictionaries) == 1
+    assert app.session_state["active_id"] == dictionaries[0].id
+    assert app.text_area(key="script_text").value == ""

@@ -12,7 +12,7 @@
 | Amends | Rewritten 22 October 2026 for the Streamlit build (`TRD` §12); the previous flows described the rejected React layout |
 
 ---
-
+                                                                     │
 ## 1. Purpose
 
 This document describes **how the user moves through the application**: what they see, what they click, what the system does in response, and where the flow can branch or fail.
@@ -57,8 +57,8 @@ header bar, no theme toggle, no right-click menus — Streamlit owns that chrome
 │                    │     text_area + counter + limit state         │
 │  Dictionaries      │───────────────────────────────────────────────│
 │   [Gnani Demo  ▾]  │  2. RULES                                     │
-│    3 rules         │     data editor: source | replacement         │
-│   [+ New]          │     [+ Add rule]  [Save]  [Delete]            │
+│    3 rules         │     rule rows: source | replacement           │
+│   [+ New]          │     [+ Add rule]  [Save] [Cancel]             │
 │   [Rename][Delete] │───────────────────────────────────────────────│
 │                    │  3. PREVIEW                                   │
 │  Voice settings    │     original | transformed (two columns)      │
@@ -67,27 +67,29 @@ header bar, no theme toggle, no right-click menus — Streamlit owns that chrome
 │   Lang    en-IN    │  4. AUDIO                                     │
 │   Speed   1.0 ×    │     [Generate comparison]                     │
 │                    │     ▸ Original    ▸ Adjusted                  │
-│  ── limitation     │     settings echo under both                  │
-│     note           │                                               │
+│                    │     settings shown in sidebar                 │
+│                    │                                               │
 └────────────────────┴───────────────────────────────────────────────┘
 ```
 
 **What the framework changes, and why the flows below are written this way:**
 
-- **Dictionary actions are buttons, not menus.** Rename and Delete sit under the
-  selector and act on the active dictionary; there is no right-click menu and no
-  per-item overflow menu.
-- **Rules are one `st.data_editor` table**, not inline editable rows. Cell edits
-  are held by the widget until **Save**; **Cancel** re-renders the table from the
-  stored rules.
-- **Deletion is confirmed in place** by a second, explicit "Confirm delete"
-  button — there is no dialog shell for the app to own.
+- **Dictionary actions are a `+` button and a per-item ⋮ menu.** Create, rename
+  and delete open a dialog; delete names the dictionary and asks for a second,
+  explicit confirmation.
+- **Rules are one text-input row per rule**, not a data editor. Edits are held as
+  drafts until **Save**; **Cancel** re-renders the rows from the stored rules.
+  Each row has its own delete button, but deletion is also a draft until Save.
 - **There is no status dot.** Failures arrive as one `st.error` block at the top
   of the main column; a healthy state needs no badge.
-- **The preview is not diff-tinted.** Original and transformed sit side by side
-  as plain text; the match report names what changed (`UI-UX Brief` §16.1).
+- **The preview is diff-tinted.** Original and transformed sit side by side, and
+  substituted spans are marked in the transformed pane (`UI-UX Brief` §8.7).
 - **Every widget change reruns the whole page** top to bottom. That rerun *is* the
   live preview, which is why no debounce is tuned anywhere below.
+- **Two honesty elements moved out of the working surface on 5 Nov 2026.** The
+  permanent sidebar limitation caption was removed; the same text remains in
+  Settings → Policies. The settings echo under the players was removed; model,
+  voice, language and speed are shown in the sidebar.
 
 **Vertical order is the user's working order.** Script → rules → preview → audio. A user always reads top to bottom; nothing below depends on something they cannot see above.
 
@@ -187,7 +189,8 @@ flowchart TD
 
 **Rules of the flow**
 
-- Creation is **an inline form in the sidebar**, not a modal. The user never loses sight of the studio.
+- Creation opens **a dialog from the sidebar's `+` button**, so the user keeps the
+  studio in view behind it. Import CSV lives inside the same dialog.
 - A new dictionary starts empty, with the script and preview still visible — so adding the first rule immediately shows its effect.
 - Deletion requires confirmation naming the dictionary and its rule count. Deleting is irreversible in this release (no undo).
 - Deleting the last dictionary returns to the Empty state rather than leaving a broken screen.
@@ -203,7 +206,7 @@ This is the highest-frequency flow. It must be fast and must never block the pre
 ```mermaid
 flowchart TD
     A{Entry point} --> B[+ Add rule:<br/>source and replacement inputs, then Add]
-    A --> D[Edit a cell in the data editor]
+    A --> D[Edit a rule row]
 
     B --> G[Row appended to the table]
     D --> G
@@ -220,9 +223,9 @@ flowchart TD
 
     N --> O[Preview updates immediately<br/>from the unsaved rows - no network call]
     O --> P{User commits?}
-    P -- Save --> Q["store.add_rule() for new rows,<br/>store.update_rule() for changed rows"]
-    P -- Cancel --> R[Edits discarded, table re-rendered<br/>from the stored rules]
-    P -- Select row, Delete --> S["Confirm, then store.delete_rule()"]
+    P -- Save --> Q["store.set_rules() with the whole table"]
+    P -- Cancel --> R[Edits discarded, rows re-rendered<br/>from the stored rules]
+    P -- Delete row --> S["Row removed from the draft;<br/>committed on Save"]
 
     Q --> T[Rule persisted to JSON]
     T --> U[Match count updates in preview]
@@ -234,7 +237,8 @@ flowchart TD
 - **Validation is local first.** The user sees a duplicate-term error while editing; `DictionaryStore` repeats the check as the authoritative gate before anything is written.
 - **The `<` / `>` warning is advisory, not blocking.** The rule engine accepts the text; the warning explains that Timbre's normalisation strips inline markup, so it probably will not do what the user expects.
 - **Select-to-add is not available.** Streamlit cannot read the selection inside `st.text_area`, so the fast path is the two-field Add rule form. Select-to-add stays on the cut list (`Implementation Plan` §9, cut 5).
-- **Cancel reverts.** Data-editor edits live in the widget until Save; Cancel re-renders the table from the stored rules, so an abandoned edit leaves no residue.
+- **Cancel reverts.** Edits live in the draft until Save; Cancel re-renders the
+  rows from the stored rules, so an abandoned edit leaves no residue.
 
 ---
 
@@ -308,7 +312,7 @@ flowchart TD
 - **One click, two calls, sequential.** Sequential rather than parallel so a rate limit affects one request at a time and the progress message is truthful. The Streamlit button is single-shot, so there is no duplicate-submit path to guard (`TRD` §12.3).
 - **If the first call fails, the second is not attempted.** There is no comparison without an original, so the second call would only spend credits.
 - **Settings are snapshotted at click time.** Changing the voice after generating does not relabel existing audio; it clears the pair (see below).
-- **The settings echo is a correctness feature.** Both players display the model, voice, language and speed used, so a viewer can see the comparison was fair.
+- **The settings used are visible in the sidebar.** Model, voice, language and speed are shown there, so a viewer can see the comparison was fair.
 - **Cached results cost nothing.** Replaying, or re-generating an identical request, hits the cache and returns instantly with `cached: true`.
 - **Credit safety.** Every path into synthesis passes through an explicit click. No auto-generation, no generation on load, no generation when the script or a rule changes.
 
@@ -461,7 +465,7 @@ Non-negotiable behaviours, each traceable to a requirement:
 | 8 | No automatic retry | TRD §9.3 |
 | 9 | Missing key blocks startup with a clear message | FR-31 |
 | 10 | Errors never discard user work | FR-26 |
-| 11 | Limitation note always visible in the sidebar | US-09 |
+| 11 | Limitation statement in Settings → Policies | US-09 |
 | 12 | Seed data labelled as sample, with its Gate B verification stated plainly | §5 |
 
 ---
@@ -532,7 +536,7 @@ Not a user flow, but the flows above are ordered to make this sequence work with
 | 4 | Transformed text, labelled "sent to Timbre" | 6 s |
 | 5 | Play adjusted audio | 8 s |
 | 6 | Switch to a second sentence, same dictionary applies | 10 s |
-| 7 | Settings echo visible under both players | 5 s |
+| 7 | Model, voice, language and speed visible in the sidebar | 5 s |
 | 8 | Limitation statement | 8 s |
 
 Total: under 60 seconds. No terminal, no code editor, no architecture diagram.

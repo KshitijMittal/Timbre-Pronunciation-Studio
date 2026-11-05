@@ -5,7 +5,7 @@
 | Document | Implementation Plan |
 | Version | 1.0 |
 | Date | 20 October 2026 |
-| Status | Approved and in execution. Backend milestones M1–M3 and M5–M8 are done (147 backend tests green); the limit measurement (10.6) is done. The Streamlit UI (M7b–d) and the audio comparison (M9) are built, merged in PR #1 on 30 October 2026, and were run end to end with a real key before the merge. The pre-freeze audit fixes are done; 184 tests green. Remaining: M10–M13, including the demo video. Last check: 30 October 2026 |
+| Status | Approved and in execution. Backend milestones M1-M3 and M5-M8 are done (147 backend tests green); the limit measurement (10.6) is done. The Streamlit UI (M7b-d) and the audio comparison (M9) are built, merged in PR #1 on 30 October 2026, and were run end to end with a real key before the merge. The pre-freeze audit fixes are done; the UI was promoted to a single-file `app.py` on 5 November 2026, 167 tests green. Two design elements were later removed at the owner's request on 5 November 2026: the permanent sidebar limitation caption (the text remains in Settings → Policies) and the settings echo under the players (settings stay visible in the sidebar). Remaining: M10-M13, including the demo video. Last check: 5 November 2026 |
 | Parent documents | `docs/PRD.md`, `docs/TRD.md`, `docs/App Flow.md`, `docs/UI-UX Brief.md`, `docs/Backend Schema.md` (all v1.0) |
 | Owners | [You] — backend, rule engine, POC, tests; [Teammate] — Streamlit UI, README, demo video |
 | Build window | 20 October – 10 November 2026 |
@@ -463,7 +463,7 @@ work is M7b–d in `streamlit_app/`, now 5–7 h instead of 18–22 h.
 |---|---|---|
 | 7b.1 | `streamlit_app/app.py` with the page shell: sidebar + main column, `st.set_page_config` | `streamlit run` opens with no error |
 | 7b.2 | Import `backend/app/core/` from the app: four lines at the top of `app.py` inserting `backend/` into `sys.path` (`TRD` §16.2), no HTTP client, no duplicated logic | One import path, and it works from the project root with no `cd` |
-| 7b.3 | `state.py`: session-state keys for dictionaries, active id, script, results | No state stored outside `st.session_state` |
+| 7b.3 | Session-state keys for dictionaries, active id, script and results, all in `app.py` | No state stored outside `st.session_state` |
 | 7b.4 | Point `DATA_DIR` at a scratch folder for development, and use a placeholder `GNANI_API_KEY` | Real dictionaries and credits untouched |
 | 7b.5 | Run command documented in README and `TRD` §16.2: `.venv/Scripts/python.exe -m streamlit run streamlit_app/app.py` from the project root | A second person can start it from a fresh clone |
 | 7b.6 | Add `streamlit>=1.40` to `backend/requirements.txt` | A fresh clone gets it from the documented install command; no manual `pip install` step survives |

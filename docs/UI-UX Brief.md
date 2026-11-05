@@ -42,7 +42,7 @@ The product's value is a *difference* — between what was written and what was 
 | 2 | **Quiet chrome** | Sidebar, header and borders are neutral and low-contrast. No shadows beyond a single subtle elevation on the drawer and dialogs. |
 | 3 | **One accent, used sparingly** | Teal appears on primary actions, active states and focus rings only. Never as decoration. |
 | 4 | **State is always visible** | Busy, error, no-op and degraded states each have a distinct, labelled appearance. The user never wonders whether something is happening. |
-| 5 | **Honesty is designed in** | The limitation note is permanent UI, not a tooltip. Transformed text is labelled as what is sent to Timbre. |
+| 5 | **Honesty is designed in** | The limitation is stated in Settings → Policies, not buried in a tooltip. Transformed text is labelled as what is sent to Timbre. |
 | 6 | **Legible under compression** | Type sizes and contrast are chosen for screen-recorded video, not for maximum density. |
 | 7 | **Nothing surprises on hover** | No content is revealed only on hover; hover only reinforces what is already visible. |
 | 8 | **Keyboard is a first-class path** | Every action reachable by Tab, with visible focus. |
@@ -143,7 +143,7 @@ All colours are defined as CSS custom properties on `:root` and overridden under
 
 | Token | Size / line-height | Weight | Use |
 |---|---|---|---|
-| `--text-xs` | 13 / 1.5 | 500 | Meta, match counts, settings echo |
+| `--text-xs` | 13 / 1.5 | 500 | Meta, match counts, settings |
 | `--text-sm` | 14 / 1.55 | 400 | Labels, helper text, table cells |
 | `--text-base` | **16 / 1.65** | 400 | Script input, preview text, body |
 | `--text-lg` | 18 / 1.5 | 600 | Panel titles |
@@ -218,28 +218,28 @@ Each panel is a card with: title row (18px/600 + optional action), 12px gap, con
   - Editing replaces lines 1–2 with two stacked inputs and Save/Cancel
 - The preview comparison becomes a **toggle** rather than side-by-side: two segmented buttons, "Original" and "Transformed", showing one at a time. Side-by-side at 375px would give each pane ~160px, which is unreadable.
 - Generate button becomes full width, 48px tall.
-- Audio players full width, stacked, with the settings echo below in `--text-xs`.
+- Audio players full width, stacked. Model, voice, language and speed are shown in the sidebar.
 
 ### 7.3 Responsive rules
 
 1. **No horizontal page scroll** at any width. Horizontal scroll is permitted only inside the rule table on tablet.
 2. **Touch targets ≥44×44px** on all interactive elements below 900px.
 3. **The preview toggle is the only content hidden by default** on mobile. Nothing else is behind a tab.
-4. **The limitation note is never hidden** at any breakpoint; it moves to the bottom of the sidebar or the top bar's overflow.
+4. **The limitation statement in Settings → Policies is never removed or hidden behind hover.**
 
 ---
 
 ## 8. Component specifications
 
-> **Superseded for this release — do not implement as written.** These specs
-> describe the dropped React build. Where this section and `docs/App Flow.md` §3
-> disagree, **`App Flow` wins**: there is no status dot (§8.1), no per-item
-> overflow menu (§8.2), no focus-trapped confirm dialog (§8.11 — deletion is
-> confirmed in place with a second button), no per-row editing table (§8.6 — it is
-> one `st.data_editor`), and no diff-tinted preview pane (§8.7 — dropped, see
-> §16.1). Streamlit cannot produce these without `unsafe_allow_html`, which
-> `docs/TRD.md` §4.1 rejects. Read this section for intent, not for layout. The
-> microcopy in §11 **is** still binding.
+> **Shipped with the Sand · warm app.** These specs were written for the original
+> React build. The Streamlit implementation keeps their intent and the binding
+> microcopy, and now implements the per-item ⋮ menu, confirm dialogs, tinted
+> substitutions and the rule rows. Where this section and `docs/App Flow.md` §3
+> disagree, **`App Flow` wins**. Read this section for intent and for the
+> microcopy in §11. Two exceptions shipped on 5 Nov 2026: the sidebar limitation
+> caption was removed (the text is in Settings → Policies), and the settings echo
+> under the players was removed (model, voice, language and speed are in the
+> sidebar).
 
 Each component lists its states. Every interactive element must define all six: default, hover, focus-visible, active, disabled, loading (where applicable).
 
@@ -275,7 +275,10 @@ Each component lists its states. Every interactive element must define all six: 
 - Language and Speed render as read-only text with a lock icon and a tooltip-free caption: "Fixed for this release".
 - Disabled during Busy state, with `--text-muted` and a caption "Locked while generating".
 
-### 8.4 Sidebar — limitation note
+### 8.4 Sidebar - limitation note
+
+**Removed from the sidebar on 5 Nov 2026.** The text now lives in Settings →
+Policies. The original spec is kept below as design intent.
 
 Permanent, non-dismissible, `--surface-alt` background, 6px radius, 12px padding, `--text-xs`, `--text-secondary`:
 
@@ -371,8 +374,7 @@ Two panes, side by side at ≥900px, toggled below.
 ### 8.9 Audio panel
 
 - Two blocks, stacked below 900px and side by side above.
-- Each block: label ("Original" / "Adjusted"), native `<audio controls>` at full width, and the settings echo below.
-- **Settings echo** (`--text-xs`, `--text-muted`): `timbre-v3.0 · Lakshmi · en-IN · 1.0×`. Identical text under both blocks, so a viewer can see the comparison was fair.
+- Each block: label ("Original" / "Adjusted") and the waveform player. Model, voice, language and speed are shown in the sidebar, not repeated under each block.
 - Before generation, blocks show a placeholder: dashed 1px border, 72px height, centred muted text "Not generated yet".
 - After a settings change, blocks reset to the placeholder with the caption "Settings changed — regenerate to compare".
 
@@ -543,11 +545,11 @@ The demo video is a scored deliverable (Demo Day Drop, Crowd Favourite). The UI 
 | Background | Off-white `#FAFAF8`, not pure white — reduces compression banding |
 | Font weights | ≥400 only; no thin strokes |
 | Diff visibility | Tinted background plus dashed underline, so the change reads even at low resolution |
-| Settings echo | Visible under both players, so fairness is provable on screen |
+| Settings | Model, voice, language and speed are visible in the sidebar |
 | Panels | Ordered so one screen contains script, rule, diff and audio without scrolling at 1280×800 |
 | Motion | None on load; the recording starts on a stable frame |
 | Theme for recording | Light. Higher contrast under compression and matches the restrained direction. |
-| Limitation note | Visible in the sidebar during the demo, not cut out |
+| Limitation | Stated in Settings → Policies; the demo does not hide it |
 
 **Target viewport for recording:** 1280×800 browser window, 100% zoom.
 
@@ -590,7 +592,7 @@ What is still checked:
 
 - [ ] At 1024px and 1280px the sidebar and main column render without overlap or clipping.
 - [ ] The rule table scrolls horizontally rather than breaking the page.
-- [ ] The limitation note is visible at every width the app is viewed at.
+- [ ] The limitation statement is present in Settings → Policies.
 
 Dropped with the React plan — do not tick: the 390/768/820px layout checks, the
 mobile card list, the preview toggle, the 44px touch target rule and the tablet
@@ -647,26 +649,24 @@ documents disagree, resolve in this order and do not reopen the question:
 | 3 | `docs/UI-UX Brief.md` §16.1 (this table) | What is dropped. Absence here is final |
 | 4 | `docs/UI-UX Brief.md` §4–§13 | Historical design record. Read for intent (restraint, one accent, honesty as UI, 16 px base type). **Never** as an implementation spec |
 
-Anything in §7, §8 or §9 that Streamlit cannot do without `unsafe_allow_html` is
-dropped by definition — `docs/TRD.md` §4.1 rejects that API on XSS grounds, and
-no visual gain justifies reopening it.
-
 The UI is Streamlit, decided 21 October 2026 (`TRD` §12). This brief still owns
-the **behaviour** (states, wording, order of work) but the framework cannot
-deliver all of the visual spec:
+the **behaviour** (states, wording, order of work) and the Sand · warm visual
+identity. A small `<style>` block is now used for surfaces the theme has no token
+for (`TRD` §12.5); no untrusted HTML is ever rendered, only text the app itself
+builds.
 
 | Feature | Status |
 |---|---|
-| Dark mode toggle | Dropped — Streamlit theming is limited and version-dependent |
-| Mobile rule cards | Dropped — the table renders as Streamlit's data editor |
-| Exact visual direction (five-panel, 1280 px shell) | Approximated with a sidebar plus a main column |
-| Diff tinting inside the transformed pane | Dropped — no safe way to tint substrings without `unsafe_allow_html` |
+| Dark mode toggle | Dropped — the app follows the Streamlit theme; a second CSS block keeps it legible, but there is no in-app switch |
+| Mobile rule cards | Dropped — rows stack as inputs; there is no separate card list |
+| Exact visual direction (five-panel, 1280 px shell) | Approximated with a sidebar plus a main column, in the Sand · warm palette |
+| Diff tinting inside the transformed pane | Implemented — substituted spans are marked in the preview only |
 | Restoring the active dictionary and script after a refresh | Dropped — Streamlit has no browser storage (`TRD` §12.6) |
 
 **Must survive anyway:** readable contrast and visible focus, the limitation
-note, the canonical/transformed labels, the identical settings echo under both
-players, and errors that state the HTTP status. These are the honesty and
-fairness elements of the product, not decoration.
+statement in Settings → Policies, the canonical/transformed labels, the settings
+visible in the sidebar, and errors that state the HTTP status. These are the
+honesty and fairness elements of the product, not decoration.
 
 ---
 

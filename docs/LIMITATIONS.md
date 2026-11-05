@@ -74,34 +74,29 @@ Everything below is a consequence of that design and is accepted, not hidden.
     dictionary and an empty editor. The dictionaries themselves are on disk and
     survive (US-07). The earlier React plan stored this in `localStorage`; the
     Streamlit decision trades that away (`TRD` §12.6).
-23. **Visual polish is reduced.** No dark mode, no mobile rule-card layout, no diff
-    tinting inside the transformed pane, and no fixed five-panel shell. The
-    fairness and honesty elements — labels, settings echo, limitation note, error
-    text with status — are kept (`UI-UX Brief` §16.1).
+23. **The layout is Streamlit's.** The Sand · warm palette, tinted substitutions,
+    dialogs and the waveform player are implemented (`TRD` §12.5), but the fixed
+    1280 px five-panel shell, per-breakpoint sidebar and mobile rule-card layout
+    of `UI-UX Brief` §8 are not reproduced. Fairness and honesty elements -
+    labels, the limitation statement in Settings → Policies, the settings shown
+    in the sidebar, error text with status - are kept.
 24. **One extra Python dependency.** The UI needs `streamlit>=1.40` in the same
     venv. There is no Node, no build step and no separate server process.
-25. **The rule table saves as a table, not per row.** `st.data_editor` has no
-    per-row Save/Cancel buttons and no way to read a selected row, so Save and
-    Cancel act on the whole table (which is what `App Flow` §7 describes) and a
-    rule is deleted through a selector plus a second, confirming button.
-    Validation messages and the zero-match note appear as captions below the
-    table rather than inside the edited row (`UI-UX Brief` §8.6). The draft
-    logic is unit-tested directly because `AppTest` cannot type into a
-    `data_editor` cell.
-26. **The audio Busy state is a swapped button plus a status line, and the
-    sidebar cannot grey out.** A Streamlit button cannot change its own label
-    while the click handler is running, so the pressed control is replaced in a
-    placeholder by a disabled "Generating…" button, and a `st.status` line
-    carries the canonical "Generating original…" then "Generating adjusted…"
-    with a `1 of 2` / `2 of 2` counter. The sidebar still cannot grey out during
-    those calls, because it is drawn before the click branch runs; the calls are
-    synchronous, so no settings change can happen while they are in flight.
-    Audio placeholders are solid `st.container(border=True)` boxes with "Not
-    generated yet", not the dashed 72 px boxes of `UI-UX Brief` §8.9, and the
-    native player is unstyled. A partial failure keeps the successful half;
-    pressing **Generate comparison** again retries the pair, and the surviving
-    half is normally served from the disk cache at no cost (`TRD` §12.3 rules
-    9–11, §11.2, §12.5).
+25. **The rule table saves as a table, not per row.** Each row has its own inputs
+    and delete button, but Save and Cancel act on the whole table, and a deleted
+    row only disappears from disk when Save is pressed. Validation messages and the
+    zero-match note appear below the table rather than inside the edited row
+    (`UI-UX Brief` §8.6).
+26. **Generation blocks the page, and the sidebar cannot grey out.** The two
+    calls run synchronously under `st.spinner`; a Streamlit button cannot change
+    its own label while its handler runs, and the sidebar is drawn before the
+    click branch, so settings stay clickable in appearance only — no settings
+    change can actually happen while the calls are in flight. A failure draws no
+    pair and shows `exc.message`; the clip that succeeded is already cached, so a
+    retry normally costs nothing for it. Waveforms are drawn in a same-origin
+    iframe fed by Streamlit's media manager; if that URL cannot be resolved the
+    panel falls back to the native `st.audio` control (`TRD` §12.3 rules 9–11,
+    §11.2, §12.5).
 
 ## Measured limits (22 October 2026)
 

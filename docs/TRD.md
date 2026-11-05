@@ -44,11 +44,11 @@ It does **not** restate product rationale. Where a requirement is referenced, th
 ┌─────────────────────────────────────────────────────────────┐
 │ Streamlit UI   (one local Python process)                   │
 │  streamlit_app/app.py                                       │
-│   ├─ sidebar   dictionaries, limitation note                │
+│   ├─ sidebar   dictionaries, voice                          │
 │   ├─ settings  model / voice (language, speed fixed)        │
 │   ├─ editor    script, character counter, limit state       │
 │   ├─ preview   original vs transformed, match report        │
-│   └─ audio     Generate, two players, settings echo         │
+│   └─ audio     Generate, two waveform players               │
 └──────────────────────────┬──────────────────────────────────┘
                            │ in-process imports (no HTTP, no CORS)
 ┌──────────────────────────▼──────────────────────────────────┐
@@ -180,21 +180,13 @@ timbre-pronunciation-studio/
     .env.example
   streamlit_app/
     app.py                     # the whole UI: one entry point
-    state.py                   # session-state helpers, active dictionary/script
     seed.py                    # first-run sample dictionary (App Flow §5)
-    ui/
-      dictionaries.py          # sidebar: selector, create, rename, delete
-      settings.py              # model + voice selectors
-      editor.py                # script input, counter, limit state
-      rules.py                 # rule table: draft, validate, save, cancel, delete
-      rule_draft.py            # draft rows and validation (no Streamlit)
-      preview.py               # original vs transformed, match report
-      audio.py                 # Generate, two players, settings echo
+    csv_io.py                  # CSV parse/export (no Streamlit, no network)
     tests/
-      test_rule_draft.py       # validation, dirty detection
-      test_rule_table.py       # editor-row merge, stale-key pruning
-      test_audio.py            # preflight, echo, sequential calls, cache, failures
-      test_app_boot.py         # the real app.py boots under AppTest
+      test_app_boot.py         # real app.py under AppTest: seed, stale clip
+      test_app_rules.py        # rule editor: add, save, cancel, duplicates
+      test_app_dictionaries.py # create/delete through the dialogs
+      test_csv_io.py           # header aliases, errors, round trip
   scripts/
     smoke_test.py              # Milestone 2 live API check
     poc_matrix.py              # Milestone 3 before/after generator
@@ -596,31 +588,36 @@ One page, sidebar plus main column. No router, no build step, no JavaScript.
 
 ```text
 streamlit_app/app.py
- ├─ sidebar  ui/dictionaries.py  selector, create, rename, delete, active selection
- │           limitation note       always visible (US-09)
- ├─ ui/settings.py                model, voice; language and speed shown, fixed
- ├─ ui/editor.py                  textarea, character counter, limit state
- ├─ ui/rules.py                   rule table: add, edit, validate, save, cancel, delete
- ├─ ui/preview.py                 original vs transformed, per-rule match report
- └─ ui/audio.py                   Generate button, two players, settings echo
+ ├─ sidebar   dictionaries (selector, +, ⋮ rename/delete), voice,
+ │            fixed language and speed
+ ├─ hero      title and the one-line promise
+ ├─ script    textarea, character counter, limit state
+ ├─ rules     rule table: add, edit, validate, save, cancel, delete
+ ├─ preview   original vs "Sent to Timbre", substituted spans tinted
+ └─ audio     Generate comparison, two waveform players, cached/fresh badge
 ```
 
-The table's draft rows and validation live in
-`streamlit_app/ui/rule_draft.py`. That module imports no Streamlit, so it is
-unit-tested directly rather than through `AppTest`.
+The panels live in `app.py` rather than a `ui/` package. `AppTest` drives the
+real page, so the tests exercise the same code that ships; there is no second
+copy of the layout to keep in step.
+
+Two helpers sit beside it. `seed.py` creates the first-run sample dictionary
+(`App Flow` §5). `csv_io.py` parses and exports CSV and imports neither
+Streamlit nor `app.*`, so it is tested directly and cannot touch the network.
 
 ### 12.2 State model
 
 | State | Owner | Notes |
 |---|---|---|
-| `dictionaries` | `st.session_state` | Refetched after any create/rename/delete |
-| `active_dictionary_id` | `st.session_state` | **Not persisted across a browser refresh** — see §12.6 |
-| `rules` | `st.session_state` | Mirrors the active dictionary |
-| `rule_drafts` | `st.session_state` | Editable copy of `rules` until Save; the preview transforms this |
-| `script` | `st.session_state` | Transform runs on the value in state |
-| `transform_result` | `st.session_state` | Result of `apply_rules` via `api`-equivalent core call |
-| `audio_result` | `st.session_state` | `{original, adjusted}`, cleared on settings change |
-| `error` | `st.session_state` | One `st.error` block, never auto-dismissed |
+| `active_id` | `st.session_state` | **Not persisted across a browser refresh** — see §12.6 |
+| `draft_rows`, `drafts_for`, `draft_seq` | `st.session_state` | Editable copy of the stored rules until Save; `drafts_for` tracks which dictionary they belong to |
+| `script_text` | `st.session_state` | The transform runs on this value |
+| `model_pick`, `voice_pick` | `st.session_state` | Applied settings; drafts hold the pending choice until Apply |
+| `audio_result` | `st.session_state` | `{sig, original, adjusted, *_cached}`; dropped when `sig` no longer matches |
+| `voice_preview` | `st.session_state` | One cached preview clip per voice |
+| `seeded` | `st.session_state` | First run only; retried if seeding failed |
+| `seed_error` | `st.session_state` | Shown in the sidebar, never swallowed |
+| `pending_new`, `pending_import`, `pending_delete` | `st.session_state` | Re-open a dialog after the rerun that closed it |
 
 ### 12.3 Interaction rules
 
@@ -644,48 +641,33 @@ unit-tested directly rather than through `AppTest`.
    aborts the run before the main-column editor is rendered, and Streamlit then
    discards the `script` widget's state — the user's text disappears. Found and
    fixed on 26 October 2026 while building the editor.
-7. **Rules are edited as drafts; the preview never waits for a save.** The table
-   writes nothing until Save. The Matches column and the preview both transform
-   the draft rows (`ui/rule_draft.py`), so an unsaved edit shows its effect at
-   once (Flow 3). Save validates locally, writes the whole table in one
-   `set_rules` call, and reloads from disk so a partial failure is visible as
-   what actually persisted. Two Streamlit limits are accepted and recorded in
-   `docs/LIMITATIONS.md`: `st.data_editor` has neither per-row buttons nor row
-   selection, so Save/Cancel act on the whole table (as Flow 3 describes) and
-   Delete is a rule selector plus an in-place confirmation, disabled while edits
-   are unsaved. The widget key carries a sequence number so Save/Cancel replace
-   the editor's own state instead of leaving discarded cells behind; the session
-   drops the previous sequence's key on the next run so dead entries do not
-   accumulate.
-8. **A cell edit triggers one rerun.** The editor's new value is only readable
-   after it renders, which is after that run's transform, so the table stores the
-   merged drafts and reruns once. Without it the Matches column and the preview
-   would describe the previous edit.
+7. **Rules are edited as drafts; the preview never waits for a save.** Each row is
+   a pair of text inputs and a delete button. Nothing is written until Save. The
+   preview transforms the draft rows, so an unsaved edit shows its effect at once
+   (Flow 3). Save validates locally, writes the whole table in one `set_rules`
+   call, and reloads from disk so a partial failure is visible as what actually
+   persisted. The widget key carries a sequence number so Save/Cancel replace the
+   inputs' own state instead of leaving discarded cells behind; the session drops
+   the previous sequence's key on the next run so dead entries do not accumulate.
+8. **Add appends to the draft, never the store.** The two-field Add rule form
+   validates the term first (empty, over the length limit, duplicate) and only
+   then appends a row. The preview and the rule count update on that same rerun.
 9. **Audio is generated only inside the click branch.** No load, script change or
    rule change can reach `TimbreClient.synthesize`. The click freezes model,
-   voice, language and speed into `settings_snapshot`, then calls original and
-   transformed **sequentially**; a failed first call aborts before the second, and
-   a failed second call keeps the original player (`App Flow` §9). A Streamlit
-   button cannot be relabelled while its own handler runs, so the pressed control
-   is swapped in its placeholder for a disabled "Generating…" button before the
-   blocking calls, alongside the `st.status` line carrying the canonical
-   "Generating original…" / "Generating adjusted…" text and a `1 of 2` / `2 of 2`
-   counter. Once the first call succeeds, its player is drawn before the second
-   starts (`App Flow` §9 step H), then one rerun restores the real button and the
-   finished pair (§12.5).
+   voice, language and speed, then calls original and transformed **sequentially**
+   through `AudioCache.get_or_synthesize()`. A failure shows `exc.message` and
+   draws no pair; the half that succeeded is already on disk, so pressing
+   **Generate comparison** again normally costs nothing for it.
 10. **The audio panel is cache-first, through the shared helper.**
    `AudioCache.get_or_synthesize()` is the same call `api/synthesize.py` makes,
    so the cache key and sidecar shape cannot drift between the API and the UI. An
    identical request — including a second Generate — is served from disk with no
    upstream call (FR-28).
-11. **Settings and text are compared, not trusted.** The sidebar callbacks
-   already clear the pair on a model or voice change (Flow 9.1); the panel also
-   checks the stored snapshot against the current settings on every run, and the
-   stored script-plus-transformed text against the current ones, so no player can
-   be labelled with a pair it was not generated from (FR-21). When a pair is
-   cleared, both blocks return to "Not generated yet" plus either "Settings
-   changed — regenerate to compare" or "Script or rules changed — regenerate to
-   compare".
+11. **A clip is shown only for the draft it was generated from.** The stored
+    signature is `(text, transformed_text, model.id, voice.id)`. On every run the
+    panel compares it with the current values and drops the result when they
+    differ, so no player can be labelled with a pair it was not generated from
+    (FR-21). Both blocks then read "Generate the comparison to hear this clip."
 
 ### 12.4 What the UI calls
 
@@ -706,21 +688,24 @@ ever needs to run against it instead, nothing in `backend/` changes.
 The one piece the UI used to repeat is now shared: the audio panel calls
 `AudioCache.get_or_synthesize()`, the same helper `api/synthesize.py` uses, so the
 cache key and sidecar shape are identical by construction and a replay costs
-nothing. The settings echo is rendered from the same frozen values that were sent.
+nothing. The model, voice, language and speed used are visible in the sidebar.
 
 ### 12.5 Styling
 
-Streamlit defaults, Markdown colour syntax for the counter states, and
-`st.columns` for original vs adjusted. No custom CSS block is used, and
-`unsafe_allow_html` stays rejected, so pane padding and label typography differ
-from `UI-UX Brief` §8.7. Dark mode, a fixed 1280 px five-panel layout, diff
-tinting and mobile rule cards are **not** attempted; they are listed as dropped in
-`UI-UX Brief` §16.1. The rule table is a `st.data_editor` with default styling;
-its per-row validation and zero-match messages are captions below the table
-(§12.3 rule 7). Audio placeholders use `st.container(border=True)` with the
-canonical "Not generated yet" caption; a dashed 72 px box is not achievable
-without `unsafe_allow_html`, and the native `st.audio` player is kept unstyled
-(§12.3 rule 9, `docs/LIMITATIONS.md` 26).
+The "Sand · warm" identity from `UI-UX Brief` is applied as one `<style>` block
+through `st.markdown(..., unsafe_allow_html=True)`: cream page, white cards,
+brown accents. Streamlit themes the page, widgets and text; the CSS only paints
+surfaces the theme has no token for. A second block is appended when
+`theme.base` is dark, so the same layout stays legible in dark mode.
+
+Panels are `st.container(border=True)`. The rule table is one text-input row per
+rule, which gives per-row delete buttons without a data editor (§12.3 rule 7).
+Substituted spans are tinted with `<mark>` in the preview only (`UI-UX Brief`
+§8.7). Each generated clip is drawn by a small waveform player: peaks are
+computed from the WAV, served through Streamlit's media manager, and played in a
+same-origin iframe. If the media URL cannot be resolved, the player falls back to
+the native `st.audio` control, so a clip is never silently missing
+(`docs/LIMITATIONS.md` 26).
 
 ### 12.6 Persistence difference (accepted)
 
@@ -806,7 +791,7 @@ documented command in §16.4 runs **184**.
 1. Fresh start with `.env` present → app loads, dictionary list populated.
 2. Create dictionary, add three rules, refresh browser → rules persist.
 3. Paste a script → preview updates without network calls to Gnani.
-4. Generate → both players work; settings echo matches.
+4. Generate → both players work; the model and voice in the sidebar match the pair.
 5. Change voice → players clear; regenerate produces different audio.
 6. Restart backend → dictionaries still present.
 7. Remove the key from `.env` → app fails with a clear message.
@@ -860,21 +845,18 @@ sys.path[:0] = [str(_HERE.parents[1] / "backend"), str(_HERE.parent)]
 ```
 
 Two directories are added, not one. `backend/` makes `app.*` importable; the
-script's own directory makes `state` importable. `streamlit run` usually adds the
-latter itself, but `streamlit.testing.v1.AppTest` does not, and the app has to
-behave identically under both. (Amended 25 October 2026: the originally
-documented single-line insert worked under `streamlit run` and failed under
-`AppTest` with `ModuleNotFoundError: No module named 'state'`.)
+script's own directory makes `seed` and `csv_io` importable. `streamlit run`
+usually adds the latter itself, but `streamlit.testing.v1.AppTest` does not, and
+the app has to behave identically under both.
 
 Streamlit prints the local URL (default `http://localhost:8501`).
 
 **Restart the server after editing any file under `streamlit_app/`.** Streamlit
 1.60 in this venv has no source-module reloader: a new browser session re-executes
-`app.py` from disk, but modules already imported by the process (`state`, `seed`,
-`ui/…`) stay cached in `sys.modules`. A browser refresh can therefore pair new
-`app.py` code with an old `state.py` and fail with `st.session_state has no
-attribute …`. Verified 25 October 2026 by reproducing the error against a cached
-`state` module; after the restart every check passes.
+`app.py` from disk, but modules already imported by the process (`seed`,
+`csv_io`) stay cached in `sys.modules`. A browser refresh can therefore pair new
+`app.py` code with an old helper. Verified 25 October 2026 by reproducing the
+error against a cached module; after the restart every check passes.
 
 Fallback, if the bootstrap is ever removed: `cd backend` and then
 `../.venv/Scripts/python.exe -m streamlit run ../streamlit_app/app.py`, which
@@ -940,13 +922,13 @@ None. Local execution only. The submission requires a demo video and public post
 
 | PRD requirement | Implemented in |
 |---|---|
-| FR-01, FR-02, FR-03, FR-04, FR-07 | `POST /api/transform`; `streamlit_app/editor.py`, `preview.py` |
+| FR-01, FR-02, FR-03, FR-04, FR-07 | `POST /api/transform`; `streamlit_app/app.py` (editor and preview) |
 | FR-05 | `config.py` limits; enforced in transform and synthesize |
 | FR-06 | API-layer warning on `<` / `>` in replacement |
-| FR-08, FR-09, FR-10, FR-11, FR-12 | `dictionary_store.py`, `streamlit_app/ui/dictionaries.py`, `streamlit_app/ui/rules.py` |
+| FR-08, FR-09, FR-10, FR-11, FR-12 | `dictionary_store.py`, `streamlit_app/app.py` (dictionaries and rule editor) |
 | FR-13, FR-14, FR-15 | Stretch — endpoint reserved, not implemented before freeze |
-| FR-17, FR-18, FR-19, FR-20, FR-21 | `GET /api/options`, `streamlit_app/ui/settings.py`, settings echo in synthesize response |
-| FR-23, FR-24, FR-25, FR-26, FR-27 | `synthesize.py`, `audio_cache.py`, `streamlit_app/ui/audio.py`, `st.error` on `AppError` |
+| FR-17, FR-18, FR-19, FR-20, FR-21 | `GET /api/options`, `streamlit_app/app.py` (voice panel and signature check), settings echo in synthesize response |
+| FR-23, FR-24, FR-25, FR-26, FR-27 | `synthesize.py`, `audio_cache.py`, `streamlit_app/app.py` (Generate and players), `st.error` on `AppError` |
 | FR-28 | `audio_cache.py` disk cache via `get_or_synthesize` |
 | FR-29 | Stretch — not implemented |
 | FR-30, FR-31, FR-32, FR-33, FR-34 | `config.py`, `.gitignore`, §17 |

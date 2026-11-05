@@ -28,10 +28,12 @@ def transform(
 ) -> TransformResponse:
     rules = _resolve_rules(payload, store)
     char_count = len(payload.text)
+    script_length = len(payload.text.strip())
 
-    if char_count > settings.script_block_chars:
+    # The same rule synthesize applies: whitespace does not count toward the block.
+    if script_length > settings.script_block_chars:
         raise LimitExceeded(
-            f"Script is {char_count:,} characters. "
+            f"Script is {script_length:,} characters. "
             f"The limit is {settings.script_block_chars:,}."
         )
 
@@ -126,6 +128,12 @@ def _inline_rules(inline: list[InlineRule]) -> list[EngineRule]:
 
     for item in inline:
         source = item.source.strip()
+        if not source:
+            raise ValidationError("Source term cannot be empty.")
+        replacement = item.replacement.strip()
+        if not replacement:
+            raise ValidationError("Replacement cannot be empty.")
+
         key = source.casefold()
         if key in seen:
             raise ValidationError(
@@ -135,7 +143,7 @@ def _inline_rules(inline: list[InlineRule]) -> list[EngineRule]:
         rules.append(
             EngineRule(
                 source=source,
-                replacement=item.replacement.strip(),
+                replacement=replacement,
                 rule_id=item.id or "",
                 created_at=item.created_at or "",
             )

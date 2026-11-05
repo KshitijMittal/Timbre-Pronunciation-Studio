@@ -1,26 +1,21 @@
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app import __version__
 from app.api import audio, dictionaries, health, options, rules, synthesize, transform
-from app.config import PROJECT_ROOT, Settings, load_settings
+from app.config import Settings, load_settings
 from app.core.audio_cache import AudioCache
 from app.core.dictionary_store import DictionaryStore
 from app.core.gnani_tts import TimbreClient
 from app.errors import AppError, InternalError, NotFound, ValidationError
 
 logger = logging.getLogger("app")
-
-FRONTEND_DIST = PROJECT_ROOT / "frontend" / "dist"
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -48,17 +43,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         timeout_seconds=settings.timeout_seconds,
     )
 
-    if settings.cors_origins:
-        app.add_middleware(
-            CORSMiddleware,
-            allow_origins=list(settings.cors_origins),
-            allow_credentials=False,
-            allow_methods=["*"],
-            allow_headers=["*"],
-        )
-
     _register_error_handlers(app)
-    _register_routes(app, settings)
+    _register_routes(app)
     return app
 
 
@@ -111,34 +97,9 @@ def _register_error_handlers(app: FastAPI) -> None:
         return JSONResponse(status_code=error.status_code, content=error.to_payload())
 
 
-def _register_routes(app: FastAPI, settings: Settings) -> None:
+def _register_routes(app: FastAPI) -> None:
     for module in (health, options, dictionaries, rules, transform, synthesize, audio):
         app.include_router(module.router, prefix="/api")
-
-    if not FRONTEND_DIST.is_dir():
-        return
-
-    assets = FRONTEND_DIST / "assets"
-    if assets.is_dir():
-        app.mount("/assets", StaticFiles(directory=assets), name="assets")
-
-    index_file = FRONTEND_DIST / "index.html"
-    if not index_file.is_file():
-        return
-
-    @app.get("/{full_path:path}", include_in_schema=False)
-    def serve_frontend(full_path: str) -> FileResponse:
-        # The SPA catch-all is registered last, but it would otherwise swallow
-        # an unknown /api path and answer it with index.html and a 200. The
-        # documented contract is a 404 with the JSON error envelope, so API
-        # paths never fall through to the shell.
-        if full_path == "api" or full_path.startswith("api/"):
-            raise NotFound("Not found.")
-
-        candidate = (FRONTEND_DIST / full_path).resolve()
-        if full_path and candidate.is_file() and FRONTEND_DIST in candidate.parents:
-            return FileResponse(candidate)
-        return FileResponse(index_file)
 
 
 if __name__ == "__main__":  # pragma: no cover - manual entry point

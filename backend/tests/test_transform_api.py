@@ -128,6 +128,26 @@ def test_inline_duplicate_sources_are_rejected(client):
     assert error["message"] == 'This dictionary already has a rule for "TIMBRE".'
 
 
+def test_blank_inline_source_is_rejected(client):
+    response = client.post(
+        "/api/transform",
+        json={"text": "Gnani", "rules": [{"source": "  ", "replacement": "X"}]},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["message"] == "Source term cannot be empty."
+
+
+def test_blank_inline_replacement_is_rejected_instead_of_deleting_the_word(client):
+    response = client.post(
+        "/api/transform",
+        json={"text": "Gnani AI", "rules": [{"source": "Gnani", "replacement": " "}]},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["message"] == "Replacement cannot be empty."
+
+
 def test_script_over_the_block_limit_is_rejected_with_the_canonical_message(client):
     response = client.post(
         "/api/transform",
@@ -138,6 +158,16 @@ def test_script_over_the_block_limit_is_rejected_with_the_canonical_message(clie
     error = response.json()["error"]
     assert error["type"] == "LIMIT_EXCEEDED"
     assert error["message"] == "Script is 2,001 characters. The limit is 2,000."
+
+
+def test_trailing_whitespace_does_not_count_toward_the_block_limit(client):
+    response = client.post(
+        "/api/transform",
+        json={"text": "a" * 2000 + " ", "rules": []},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["char_count"] == 2001
 
 
 def test_long_script_warns_without_blocking(client):

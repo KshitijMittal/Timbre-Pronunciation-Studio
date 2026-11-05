@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
-from app import main as app_main
-
 UNKNOWN_RULE = "rule_00000000-0000-4000-8000-000000000000"
 
 
@@ -50,24 +48,6 @@ def test_unknown_rule_returns_not_found(client):
 
 
 def test_unknown_route_uses_the_error_envelope(client):
-    response = client.get("/api/not-a-route")
-
-    assert response.status_code == 404
-    assert response.json()["error"]["type"] == "NOT_FOUND"
-
-
-def test_unknown_api_route_still_404s_when_the_ui_is_built(settings, monkeypatch, tmp_path):
-    """The SPA catch-all must not answer an unknown API path with index.html."""
-    dist = tmp_path / "dist"
-    (dist / "assets").mkdir(parents=True)
-    (dist / "assets" / "app.js").write_text("// js", encoding="utf-8")
-    (dist / "index.html").write_text("<!doctype html>", encoding="utf-8")
-    monkeypatch.setattr(app_main, "FRONTEND_DIST", dist)
-    client = TestClient(app_main.create_app(settings))
-
-    assert client.get("/").status_code == 200
-    assert client.get("/dictionaries/new").status_code == 200
-
     response = client.get("/api/not-a-route")
 
     assert response.status_code == 404

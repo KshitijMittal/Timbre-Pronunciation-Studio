@@ -27,7 +27,6 @@ def settings(tmp_path: Path) -> Settings:
         script_warn_chars=800,
         script_block_chars=2000,
         data_dir=tmp_path,
-        cors_origins=("http://127.0.0.1:5173",),
     )
 
 

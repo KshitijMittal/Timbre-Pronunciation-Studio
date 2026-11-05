@@ -7,10 +7,6 @@ from pydantic import BaseModel, ConfigDict, Field
 DICTIONARY_ID_PATTERN = (
     r"^dict_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
 )
-RULE_ID_PATTERN = (
-    r"^rule_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
-)
-
 MAX_NAME_LENGTH = 80
 MAX_SOURCE_LENGTH = 120
 MAX_REPLACEMENT_LENGTH = 200

@@ -12,6 +12,10 @@ BACKEND_DIR = Path(__file__).resolve().parent.parent
 PROJECT_ROOT = BACKEND_DIR.parent
 DEFAULT_DATA_DIR = PROJECT_ROOT / "data"
 
+# The only speed range the Timbre API contract accepts (Backend Schema §10.4).
+MIN_SPEED = 0.85
+MAX_SPEED = 1.15
+
 
 @dataclass(frozen=True, slots=True)
 class Settings:
@@ -25,7 +29,6 @@ class Settings:
     script_warn_chars: int
     script_block_chars: int
     data_dir: Path
-    cors_origins: tuple[str, ...]
 
 
 def load_settings(env_file: Path | None = None) -> Settings:
@@ -44,18 +47,27 @@ def load_settings(env_file: Path | None = None) -> Settings:
             "SCRIPT_BLOCK_CHARS must be greater than SCRIPT_WARN_CHARS."
         )
 
+    speed = _read_float("GNANI_SPEED", 1.0)
+    if not MIN_SPEED <= speed <= MAX_SPEED:
+        raise ConfigurationError(
+            f"GNANI_SPEED must be between {MIN_SPEED} and {MAX_SPEED}."
+        )
+
+    timeout = _read_float("GNANI_TIMEOUT_SECONDS", 60.0)
+    if timeout <= 0:
+        raise ConfigurationError("GNANI_TIMEOUT_SECONDS must be greater than zero.")
+
     return Settings(
         api_key=api_key,
         base_url=os.getenv("GNANI_BASE_URL", "https://api.vachana.ai").rstrip("/"),
         default_model=os.getenv("GNANI_DEFAULT_MODEL", "timbre-v3.0"),
         default_voice=os.getenv("GNANI_DEFAULT_VOICE", "Lakshmi"),
         language=os.getenv("GNANI_LANGUAGE", "en-IN"),
-        speed=_read_float("GNANI_SPEED", 1.0),
-        timeout_seconds=_read_float("GNANI_TIMEOUT_SECONDS", 60.0),
+        speed=speed,
+        timeout_seconds=timeout,
         script_warn_chars=warn_chars,
         script_block_chars=block_chars,
         data_dir=_read_data_dir(),
-        cors_origins=_read_cors_origins(),
     )
 
 
@@ -85,8 +97,3 @@ def _read_data_dir() -> Path:
         return DEFAULT_DATA_DIR
     path = Path(raw)
     return path if path.is_absolute() else (PROJECT_ROOT / path).resolve()
-
-
-def _read_cors_origins() -> tuple[str, ...]:
-    raw = os.getenv("CORS_ORIGINS", "http://127.0.0.1:5173,http://localhost:5173")
-    return tuple(origin.strip() for origin in raw.split(",") if origin.strip())

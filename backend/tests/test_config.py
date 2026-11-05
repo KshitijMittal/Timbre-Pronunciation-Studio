@@ -24,7 +24,6 @@ ENV_VARS = (
     "SCRIPT_WARN_CHARS",
     "SCRIPT_BLOCK_CHARS",
     "DATA_DIR",
-    "CORS_ORIGINS",
 )
 
 
@@ -46,6 +45,26 @@ def test_block_limit_must_exceed_warning_limit(monkeypatch, tmp_path: Path):
     monkeypatch.setenv("SCRIPT_BLOCK_CHARS", "2000")
 
     with pytest.raises(ConfigurationError, match="greater than"):
+        load_settings(tmp_path / "missing.env")
+
+
+@pytest.mark.parametrize("speed", ["0.84", "1.16"])
+def test_speed_must_stay_inside_the_api_range(monkeypatch, tmp_path: Path, speed):
+    _clear_env(monkeypatch, ENV_VARS)
+    monkeypatch.setenv("GNANI_API_KEY", "test-key")
+    monkeypatch.setenv("GNANI_SPEED", speed)
+
+    with pytest.raises(ConfigurationError, match="between 0.85 and 1.15"):
+        load_settings(tmp_path / "missing.env")
+
+
+@pytest.mark.parametrize("timeout", ["0", "-1"])
+def test_timeout_must_be_positive(monkeypatch, tmp_path: Path, timeout):
+    _clear_env(monkeypatch, ENV_VARS)
+    monkeypatch.setenv("GNANI_API_KEY", "test-key")
+    monkeypatch.setenv("GNANI_TIMEOUT_SECONDS", timeout)
+
+    with pytest.raises(ConfigurationError, match="greater than zero"):
         load_settings(tmp_path / "missing.env")
 
 

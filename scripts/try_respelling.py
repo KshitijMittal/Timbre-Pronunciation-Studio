@@ -51,6 +51,12 @@ SHEET_HTML = TRY_DIR / "listen.html"
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
+# Loaded by path in the tests, where the script's own folder is not on sys.path.
+SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+
+from _guard import confirm_credit_spend  # noqa: E402
 from app.config import load_settings  # noqa: E402
 from app.core.audio_cache import AudioCache  # noqa: E402
 from app.core.gnani_tts import DEFAULT_AUDIO_CONFIG, TimbreClient  # noqa: E402
@@ -64,6 +70,12 @@ SETTINGS: dict[str, Any] = {
     "voice": "Lakshmi",
     "language": "en-IN",
     "speed": 1.0,
+}
+
+# The sidecar's audio block, identical to the API's echo.
+_AUDIO_ECHO = {
+    key: DEFAULT_AUDIO_CONFIG[key]
+    for key in ("sample_rate", "num_channels", "sample_width", "container")
 }
 
 # Candidate terms for the retry. Two of the round-1 terms are deliberately
@@ -123,31 +135,6 @@ TERMS: list[dict[str, str]] = [
 ]
 
 VERDICTS = ("closer", "no change", "worse", "damaged")
-
-
-def confirm_credit_spend(estimate: int, *, detail: str = "") -> None:
-    """Stop before the first paid call unless a human types the word.
-
-    An agent, a heredoc or a pipe cannot answer this: `input()` raises EOFError
-    and the run aborts with no call made. `--confirm-spend` is the deliberate,
-    visible opt-in for a scripted run, and AGENTS.md forbids using it without
-    the user's explicit approval in the current conversation.
-    """
-    if estimate <= 0:
-        print("Nothing to generate: every file this run needs is already cached. "
-              "No credits will be spent.")
-        return
-
-    print(f"This run can make up to {estimate} paid Timbre call(s).")
-    if detail:
-        print(detail)
-    print("Nothing has been sent yet. No credits have been spent.")
-    try:
-        answer = input('Type "spend" to continue, or press Enter to cancel: ')
-    except EOFError:
-        answer = ""
-    if answer.strip().lower() != "spend":
-        raise SystemExit("Cancelled before any API call. No credits were spent.")
 
 
 def _original_is_cached(
@@ -256,11 +243,18 @@ def save_manifest(manifest: dict[str, Any]) -> None:
     )
 
 
+# Built by ``build_client`` so every run reads and writes the same audio cache the
+# API and the UI use: a clip already paid for is never paid for twice.
+CACHE: AudioCache | None = None
+
+
 def build_client() -> TimbreClient:
+    global CACHE
     try:
         app_settings = load_settings()
     except ConfigurationError as exc:
         raise SystemExit(f"{exc}\nAdd the key to backend/.env, or use --dry-run.") from exc
+    CACHE = AudioCache(AUDIO_DIR)
     return TimbreClient(
         api_key=app_settings.api_key,
         base_url=app_settings.base_url,
@@ -316,11 +310,32 @@ def cached_or_new(
         bucket["reused"] = True
         return bucket
 
-    status, audio, elapsed_ms, error = synthesise(client, text, settings)
+    cached = CACHE.get(cache_key) if CACHE is not None else None
+    if cached is not None:
+        # Already paid for by the API, the UI or an earlier run.
+        status, audio, elapsed_ms, error, reused = 200, cached, 0, "", True
+    else:
+        status, audio, elapsed_ms, error = synthesise(client, text, settings)
+        reused = False
+
     if not audio:
         bucket.update({"key": cache_key, "status": status, "error": error})
         bucket.pop("file", None)
         return bucket
+
+    if not reused and CACHE is not None:
+        try:
+            CACHE.store(
+                cache_key,
+                audio,
+                text=text,
+                settings={**settings, **_AUDIO_ECHO},
+                upstream_status=status,
+                elapsed_ms=elapsed_ms,
+            )
+        except OSError:
+            # The term's own copy below is what the listening sheet needs.
+            pass
 
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_bytes(audio)
@@ -334,7 +349,10 @@ def cached_or_new(
             "error": "",
         }
     )
-    bucket.pop("reused", None)
+    if reused:
+        bucket["reused"] = True
+    else:
+        bucket.pop("reused", None)
     return bucket
 
 

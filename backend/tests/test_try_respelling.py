@@ -54,13 +54,14 @@ def fake_client(monkeypatch: pytest.MonkeyPatch):
 
 @pytest.fixture(autouse=True)
 def isolated_paths(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
-    """Point the script at a temporary data directory."""
+    """Point the script at a temporary data directory and a fresh cache."""
     audio_dir = tmp_path / "audio"
     monkeypatch.setattr(script, "AUDIO_DIR", audio_dir)
     monkeypatch.setattr(script, "TRY_DIR", audio_dir / "try")
     monkeypatch.setattr(script, "RESULTS_JSON", tmp_path / "try_results.json")
     monkeypatch.setattr(script, "POC_RESULTS_JSON", tmp_path / "poc_results.json")
     monkeypatch.setattr(script, "SHEET_HTML", audio_dir / "try" / "listen.html")
+    monkeypatch.setattr(script, "CACHE", None)
     return tmp_path
 
 
@@ -122,6 +123,34 @@ def test_two_respellings_for_one_term_keep_separate_files(fake_client):
     assert len(attempts) == 2
     files = {attempt["file"] for attempt in attempts}
     assert len(files) == 2, "each respelling must keep its own file"
+
+
+def test_audio_already_in_the_shared_cache_is_not_paid_for_again(fake_client):
+    """A clip the UI or the API already paid for must not be bought twice."""
+    from app.core.audio_cache import AudioCache
+
+    settings = dict(script.SETTINGS)
+    text = script.TERMS[0]["sentence"]
+    key = script.cache_key_for(text, settings)
+    cache = AudioCache(script.AUDIO_DIR)
+    cache.store(
+        key,
+        b"RIFF-already-paid",
+        text=text,
+        settings={**settings, **script._AUDIO_ECHO},
+        upstream_status=200,
+        elapsed_ms=1,
+    )
+    script.CACHE = cache
+
+    manifest = script.load_manifest()
+    original = script.ensure_original(
+        manifest, fake_client, settings, script.TERMS[0]
+    )
+
+    assert fake_client.calls == []
+    assert original["reused"] is True
+    assert (script.AUDIO_DIR / original["file"]).read_bytes() == b"RIFF-already-paid"
 
 
 def test_verdict_is_recorded_and_survives_a_rerun(fake_client):

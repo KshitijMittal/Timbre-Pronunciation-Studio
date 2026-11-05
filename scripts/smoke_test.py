@@ -4,8 +4,8 @@ Standalone on purpose: this file needs only `requests` and `python-dotenv`, so i
 runs even if FastAPI is not installed (TRD section 5.1).
 
 Usage (from the project root):
-    .venv/Scripts/python.exe scripts/smoke_test.py
     .venv/Scripts/python.exe scripts/smoke_test.py --skip-latency
+    .venv/Scripts/python.exe scripts/smoke_test.py --confirm-spend  # skips the typed guard
 
 Exit codes:
     0  at least one model returned audio
@@ -23,11 +23,15 @@ import time
 from pathlib import Path
 
 import requests
-from dotenv import load_dotenv
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 BACKEND_DIR = PROJECT_ROOT / "backend"
 AUDIO_DIR = PROJECT_ROOT / "data" / "audio"
+
+if str(Path(__file__).resolve().parent) not in sys.path:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from _guard import confirm_credit_spend, load_api_key  # noqa: E402
 
 AUDIO_CONFIG = {
     "sample_rate": 48000,
@@ -43,15 +47,6 @@ LONG_TEXT = (
     "The studio keeps the original script untouched while sending the "
     "transformed script to the engine, so the words on screen never change. "
 ) * 7
-
-
-def load_api_key() -> str:
-    load_dotenv(BACKEND_DIR / ".env")
-    key = os.getenv("GNANI_API_KEY", "").strip()
-    if not key:
-        print("GNANI_API_KEY is not set. Add it to backend/.env and rerun.")
-        raise SystemExit(2)
-    return key
 
 
 def call(
@@ -140,7 +135,16 @@ def save(name: str, audio: bytes) -> Path:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Timbre live API smoke test")
     parser.add_argument("--skip-latency", action="store_true", help="skip the 800-char probe")
+    parser.add_argument(
+        "--confirm-spend",
+        action="store_true",
+        help="skip the typed credit confirmation (only with the owner's explicit go-ahead)",
+    )
     args = parser.parse_args()
+
+    paid = 3 if args.skip_latency else 4
+    if not args.confirm_spend:
+        confirm_credit_spend(paid, detail="Two models, one error probe and one latency probe.")
 
     api_key = load_api_key()
     base_url = os.getenv("GNANI_BASE_URL", "https://api.vachana.ai")

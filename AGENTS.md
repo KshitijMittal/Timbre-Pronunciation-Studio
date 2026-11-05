@@ -22,6 +22,7 @@ the single worst mistake available in this repository.
 | Action | Cost |
 |---|---|
 | `scripts/poc_matrix.py` without `--dry-run` | 16 calls |
+| `scripts/smoke_test.py` without `--confirm-spend` | 4 calls (3 with `--skip-latency`) |
 | `scripts/try_respelling.py original` / `adjusted` / `interactive` without `--dry-run` | 1 call per file not already cached |
 | `scripts/measure_limits.py` without `--dry-run` | 8 calls (fewer if the audio is cached) |
 | `POST /api/synthesize` against a real key | 1 call (0 if the audio is cached) |

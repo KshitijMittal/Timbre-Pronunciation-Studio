@@ -67,6 +67,12 @@ RESULTS_JSON = PROJECT_ROOT / "data" / "limits_results.json"
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
+# Loaded by path in the tests, where the script's own folder is not on sys.path.
+SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+
+from _guard import confirm_credit_spend  # noqa: E402
 from app.config import load_settings  # noqa: E402
 from app.core.audio_cache import AudioCache  # noqa: E402
 from app.core.gnani_tts import DEFAULT_AUDIO_CONFIG, TimbreClient  # noqa: E402
@@ -145,33 +151,6 @@ def planned_probes() -> list[dict[str, Any]]:
         {"question": "TQ5", "label": "ceiling-2100", "text": build_text(2100, 5)}
     )
     return probes
-
-
-def confirm_credit_spend(estimate: int, *, detail: str = "") -> None:
-    """Stop before the first paid call unless a human types the word.
-
-    Same guard as `poc_matrix.py` and `try_respelling.py`: an agent, a heredoc
-    or a pipe cannot answer this, because `input()` raises EOFError and the run
-    aborts with no call made. `--confirm-spend` is the deliberate opt-in, and
-    `AGENTS.md` section 1 forbids using it without the owner's approval.
-    """
-    if estimate <= 0:
-        print(
-            "Nothing to generate: every script this run needs is already cached. "
-            "No credits will be spent."
-        )
-        return
-
-    print(f"This run can make up to {estimate} paid Timbre call(s).")
-    if detail:
-        print(detail)
-    print("Nothing has been sent yet. No credits have been spent.")
-    try:
-        answer = input('Type "spend" to continue, or press Enter to cancel: ')
-    except EOFError:
-        answer = ""
-    if answer.strip().lower() != "spend":
-        raise SystemExit("Cancelled before any API call. No credits were spent.")
 
 
 def main() -> int:

@@ -23,7 +23,6 @@ import time
 from pathlib import Path
 
 import requests
-from dotenv import load_dotenv
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 BACKEND_DIR = PROJECT_ROOT / "backend"
@@ -34,6 +33,7 @@ RESULTS_MD = PROJECT_ROOT / "data" / "poc_results.md"
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
+from _guard import confirm_credit_spend, load_api_key  # noqa: E402
 from app.core.pronunciation_rules import Rule, apply_rules  # noqa: E402
 
 AUDIO_CONFIG = {
@@ -116,15 +116,6 @@ def slug(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
 
 
-def load_api_key() -> str:
-    load_dotenv(BACKEND_DIR / ".env")
-    key = os.getenv("GNANI_API_KEY", "").strip()
-    if not key:
-        print("GNANI_API_KEY is not set. Add it to backend/.env, or use --dry-run.")
-        raise SystemExit(2)
-    return key
-
-
 def synthesize(*, api_key: str, base_url: str, text: str) -> tuple[int, bytes, int, dict | None]:
     started = time.perf_counter()
     try:
@@ -157,25 +148,6 @@ def synthesize(*, api_key: str, base_url: str, text: str) -> tuple[int, bytes, i
     except ValueError:
         error = {"type": f"HTTP_{response.status_code}", "message": response.text[:200]}
     return response.status_code, b"", elapsed_ms, error
-
-
-def confirm_credit_spend(estimate: int, *, detail: str = "") -> None:
-    """Stop before the first paid call unless a human types the word.
-
-    An agent, a heredoc or a pipe cannot answer this: `input()` raises EOFError
-    and the run aborts with no call made. `--confirm-spend` is the deliberate,
-    visible opt-in, and AGENTS.md forbids using it without explicit approval.
-    """
-    print(f"This run can make up to {estimate} paid Timbre call(s).")
-    if detail:
-        print(detail)
-    print("Nothing has been sent yet. No credits have been spent.")
-    try:
-        answer = input('Type "spend" to continue, or press Enter to cancel: ')
-    except EOFError:
-        answer = ""
-    if answer.strip().lower() != "spend":
-        raise SystemExit("Cancelled before any API call. No credits were spent.")
 
 
 def main() -> int:

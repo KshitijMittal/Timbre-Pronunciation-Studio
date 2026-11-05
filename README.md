@@ -10,6 +10,12 @@ audio with identical model, voice, language and speed settings.
 > capability, and it does not claim universal pronunciation correctness. See
 > [`docs/LIMITATIONS.md`](docs/LIMITATIONS.md).
 
+![Timbre Pronunciation Studio: script, rule row, the "Sent to Timbre" preview and the two cached audio players](docs/images/app.png)
+
+*The whole workflow in one screen: one rule, the preview of what Timbre will
+receive, and both clips. Captured from the app with a scratch data folder and a
+placeholder key; both clips were already cached, so no credits were spent.*
+
 ---
 
 ## Status

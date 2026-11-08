@@ -170,6 +170,61 @@ def highlighted(text: str, rules: list[tuple[str, str]]) -> str:
     return "".join(pieces)
 
 
+def char_meter(used: int, limit: int, warn_at: int) -> str:
+    """The script count with a 16 px ring showing the share already used."""
+    pct = min(used / limit, 1.0) * 100 if limit else 0
+    state = " is-over" if used > limit else " is-warn" if used > warn_at else ""
+    return (
+        f'<div class="script-count{state}" style="--pct: {pct:.1f}%">'
+        '<span class="char-meter" role="img"'
+        f' aria-label="{pct:.0f} percent of the character limit used"'
+        f' title="{used:,} of {limit:,} characters used"></span>'
+        f"<span>{used:,} / {limit:,} characters</span></div>"
+    )
+
+
+def meter_bridge(limit: int, warn_at: int) -> str:
+    """Zero-height script that repaints the counter while the user types.
+
+    ``st.text_area`` only commits on blur, so the number and the ring would
+    otherwise wait for the field to lose focus. The server-rendered markup stays
+    the source of truth: this only mirrors keystrokes into it between commits,
+    and a commit renders the same values again.
+    """
+    return f"""
+<script>
+(() => {{
+  const doc = window.parent.document;
+  const LIMIT = {limit}, WARN = {warn_at};
+  // The frame only carries this script; take it out of the layout entirely.
+  const cell = window.frameElement?.closest('[data-testid="stElementContainer"]');
+  if (cell) cell.style.cssText += "position:absolute;height:0;overflow:hidden;";
+  if (doc.__timbreMeter === LIMIT) return;  // one listener per page
+  doc.__timbreMeter = LIMIT;
+  const fmt = (n) => n.toLocaleString("en-US");
+  const paint = (n) => {{
+    const row = doc.querySelector(".script-count");
+    if (!row) return;
+    const pct = LIMIT ? Math.min(n / LIMIT, 1) * 100 : 0;
+    row.style.setProperty("--pct", pct.toFixed(1) + "%");
+    row.classList.toggle("is-warn", n > WARN && n <= LIMIT);
+    row.classList.toggle("is-over", n > LIMIT);
+    row.lastElementChild.textContent = `${{fmt(n)}} / ${{fmt(LIMIT)}} characters`;
+    const meter = row.querySelector(".char-meter");
+    meter.title = `${{fmt(n)}} of ${{fmt(LIMIT)}} characters used`;
+    meter.setAttribute("aria-label", `${{Math.round(pct)}} percent of the character limit used`);
+  }};
+  doc.addEventListener("input", (e) => {{
+    const t = e.target;
+    if (t.tagName === "TEXTAREA" && t.closest(".st-key-script_text")) {{
+      paint(t.value.length);
+    }}
+  }}, true);
+}})();
+</script>
+"""
+
+
 def slug(name: str) -> str:
     cleaned = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
     return cleaned or "dictionary"
@@ -206,6 +261,18 @@ code, pre, .stCode { font-family: "Cascadia Code", ui-monospace, monospace !impo
 .hero h1 { margin: 0; line-height: 1.06; letter-spacing: -0.02em; }
 /* Subtitle starts under the first letter of the title, not under the icon. */
 .hero p { margin: 0.5rem 0 0 calc(64px + 1rem); }
+
+/* Script meter: a 16 px ring beside the count; the numbers stay the source of truth. */
+.script-count { --meter-track: #D8C8AC; --meter-fill: #8A6A3B;
+  display: flex; align-items: center; gap: 0.4rem; margin-top: 0.2rem;
+  font-size: 0.875rem; line-height: 1.2; color: #6B5B45; }
+.script-count .char-meter { width: 16px; height: 16px; flex: 0 0 16px;
+  border-radius: 50%;
+  background: conic-gradient(var(--meter-fill) var(--pct), var(--meter-track) 0);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2.5px), #000 calc(100% - 2.5px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 2.5px), #000 calc(100% - 2.5px)); }
+.script-count.is-warn { --meter-fill: #B54708; }
+.script-count.is-over { --meter-fill: #B42318; }
 
 /* The transformed preview must wrap a long unbroken script, not scroll it. */
 .preview-text { line-height: 1.65; overflow-wrap: anywhere; word-break: break-word; }
@@ -415,6 +482,9 @@ DARK_CSS = """
 .hero p { color: #9BB3AE; }
 .panel-title .label { color: #5EEAD4; }
 .panel-title .hint { color: #8AA5A0; }
+.script-count { --meter-track: #2B3D38; --meter-fill: #5EEAD4; color: #9BB3AE; }
+.script-count.is-warn { --meter-fill: #F5B544; }
+.script-count.is-over { --meter-fill: #F97066; }
 mark { background: rgba(20, 184, 166, 0.32); color: #E6F2EF; }
 .stTextArea textarea, .stTextInput input { background: #0F1A18 !important; color: #E6F2EF !important; }
 </style>
@@ -474,6 +544,7 @@ settings, store, cache, client, key_error = services()
 LANGUAGE = settings.language if settings else "en-IN"
 SPEED = settings.speed if settings else 1.0
 SCRIPT_LIMIT = settings.script_block_chars if settings else 2000
+SCRIPT_WARN = settings.script_warn_chars if settings else 800
 
 # Session state -------------------------------------------------------------
 
@@ -1180,7 +1251,8 @@ st.text_area(
     placeholder=SAMPLE_SCRIPT, key="script_text",
 )
 script = st.session_state.script_text
-st.caption(f"{len(script)} / {SCRIPT_LIMIT} characters")
+st.html(char_meter(len(script), SCRIPT_LIMIT, SCRIPT_WARN))
+st.iframe(meter_bridge(SCRIPT_LIMIT, SCRIPT_WARN), height=1)
 if len(script) > SCRIPT_LIMIT:
     st.error(f"This script is {len(script)} characters; the limit is {SCRIPT_LIMIT}.")
 

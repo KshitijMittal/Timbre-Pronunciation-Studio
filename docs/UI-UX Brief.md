@@ -302,6 +302,8 @@ This is a designed honesty element (PRD US-09), not a disclaimer buried in a REA
 | >2000 | `--error` | `2,140 characters — over the 2,000 limit. Shorten the script.` |
 
 - The counter uses a tabular-nums font feature so it does not jitter while typing.
+- The counter and the ring repaint on every keystroke, not only when the field loses focus; a commit re-renders the same numbers.
+- A 16 px usage ring sits beside the counter, filling clockwise; its colour follows the same ok / warning / error states. The numbers remain the source of truth.
 - Generate is disabled in the >2000 state, with the reason visible.
 
 ### 8.6 Rule table (desktop and laptop)

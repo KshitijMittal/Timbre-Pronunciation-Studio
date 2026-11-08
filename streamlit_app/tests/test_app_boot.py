@@ -37,6 +37,30 @@ def test_first_run_seeds_the_verified_dictionary_and_sample_script(monkeypatch, 
     assert app.text_area(key="script_text").value == SAMPLE_SCRIPT
 
 
+def test_script_meter_tracks_use_and_flags_the_warn_threshold(monkeypatch, tmp_path):
+    app = boot(monkeypatch, tmp_path)
+
+    app.text_area(key="script_text").set_value("x" * 1000).run()
+    warn = next(h.value for h in app.html if "char-meter" in h.value)
+    assert "1,000 / 2,000 characters" in warn
+    assert "script-count is-warn" in warn
+
+    app.text_area(key="script_text").set_value("x" * 2100).run()
+    over = next(h.value for h in app.html if "char-meter" in h.value)
+    assert "script-count is-over" in over
+    assert any("2100 characters" in e.value for e in app.error)
+
+
+def test_the_live_counter_bridge_mirrors_the_script_field_and_its_limits(
+    monkeypatch, tmp_path
+):
+    app = boot(monkeypatch, tmp_path)
+
+    bridge = app.get("iframe")[0].proto.srcdoc
+    assert ".st-key-script_text" in bridge
+    assert "LIMIT = 2000, WARN = 800" in bridge
+
+
 def test_a_clip_from_an_older_draft_is_dropped(monkeypatch, tmp_path):
     app = boot(monkeypatch, tmp_path)
     app.session_state["audio_result"] = {

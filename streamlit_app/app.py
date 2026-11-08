@@ -139,21 +139,24 @@ POLICIES: tuple[tuple[str, str], ...] = (
 
 
 def spans(text: str, rules: list[tuple[str, str]]) -> list[tuple[int, int, str]]:
-    """Display offsets: first occurrence per rule, non-overlapping.
+    """Display offsets: every whole-word occurrence, exactly as ``apply_rules`` fires.
 
     Display only — the text actually sent to Timbre comes from ``apply_rules``.
     """
-    found: list[tuple[int, int, str]] = []
-    for source, replacement in rules:
-        # Case-insensitive like apply_rules, so a mark appears wherever the
-        # transform actually fired.
-        start = text.lower().find(source.lower())
-        if start == -1:
-            continue
-        if any(start < end and begin < start + len(source) for begin, end, _ in found):
-            continue
-        found.append((start, start + len(source), replacement))
-    return sorted(found)
+    ordered = sorted(
+        (pair for pair in rules if pair[0]), key=lambda pair: -len(pair[0])
+    )
+    if not ordered:
+        return []
+    replacement_for = {source.casefold(): replacement for source, replacement in ordered}
+    pattern = re.compile(
+        r"(?<!\w)(?:" + "|".join(re.escape(source) for source, _ in ordered) + r")(?!\w)",
+        re.IGNORECASE,
+    )
+    return [
+        (match.start(), match.end(), replacement_for[match.group(0).casefold()])
+        for match in pattern.finditer(text)
+    ]
 
 
 def highlighted(text: str, rules: list[tuple[str, str]]) -> str:

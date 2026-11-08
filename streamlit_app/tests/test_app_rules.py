@@ -75,6 +75,18 @@ def test_adding_a_rule_is_a_draft_until_it_is_saved(app):
     assert run.button(key="save_rules").disabled is False
 
 
+def test_preview_marks_every_occurrence_of_a_term(app):
+    run, _ = app
+
+    run.text_area(key="script_text").set_value("Hyundai builds Hyundai cars.").run()
+    run.text_input(key="add_term_0").set_value("Hyundai")
+    run.text_input(key="add_says_0").set_value("Hyun-day")
+    next(b for b in run.button if b.label == "Add rule").click().run()
+
+    preview = next(h.value for h in run.html if "Hyun-day" in h.value)
+    assert preview.count("<mark>Hyun-day</mark>") == 2
+
+
 def test_a_duplicate_term_is_refused_before_it_reaches_the_draft(app):
     run, store = app
     dictionary_id = run.session_state["active_id"]

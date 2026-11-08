@@ -207,6 +207,9 @@ code, pre, .stCode { font-family: "Cascadia Code", ui-monospace, monospace !impo
 /* Subtitle starts under the first letter of the title, not under the icon. */
 .hero p { margin: 0.5rem 0 0 calc(64px + 1rem); }
 
+/* The transformed preview must wrap a long unbroken script, not scroll it. */
+.preview-text { line-height: 1.65; overflow-wrap: anywhere; word-break: break-word; }
+
 .panel-title { display: flex; align-items: baseline; gap: 0.5rem; margin: 0 0 0.4rem; }
 .panel-title .label { font-size: 1.02rem; font-weight: 600; }
 .panel-title .help { display: inline-flex; align-items: center; justify-content: center;
@@ -1311,7 +1314,7 @@ with original_col, st.container(border=True):
     st.write(text)
 with transformed_col, st.container(border=True):
     st.badge("Sent to Timbre", icon=":material/send:", color="primary")
-    st.html(f'<div style="line-height:1.65">{highlighted(text, preview_pairs)}</div>')
+    st.html(f'<div class="preview-text">{highlighted(text, preview_pairs)}</div>')
 
 # Action --------------------------------------------------------------------
 
